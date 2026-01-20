@@ -75,18 +75,20 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar duplicados
-    const { data: existingByCedula } = await supabase
-      .from('users')
-      .select('id')
-      .eq('cedula', cedula)
-      .maybeSingle()
+    // Verificar duplicados (solo si cédula fue proporcionada)
+    if (cedula) {
+      const { data: existingByCedula } = await supabase
+        .from('users')
+        .select('id')
+        .eq('cedula', cedula)
+        .maybeSingle()
 
-    if (existingByCedula) {
-      return NextResponse.json(
-        { success: false, error: 'Ya existe un usuario con esa cédula' },
-        { status: 400 }
-      )
+      if (existingByCedula) {
+        return NextResponse.json(
+          { success: false, error: 'Ya existe un usuario con esa cédula' },
+          { status: 400 }
+        )
+      }
     }
 
     const { data: existingByEmail } = await supabase
@@ -122,9 +124,9 @@ export async function POST(request: NextRequest) {
       .from('users')
       .insert({
         nombre_completo: nombre_completo.trim(),
-        cedula,
+        cedula: cedula || null, // Permitir null si no se proporciona
         email: email.toLowerCase().trim(),
-        celular,
+        celular, // Ya incluye código de país
         password_hash,
         es_admin: false,
       })

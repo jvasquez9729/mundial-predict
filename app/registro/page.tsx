@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Trophy, Loader2, Mail, Lock, User, ArrowLeft, CheckCircle, CreditCard, Phone, AlertCircle } from "lucide-react";
+import { Trophy, Loader2, Mail, Lock, User, ArrowLeft, CheckCircle, CreditCard, AlertCircle } from "lucide-react";
+import { PhoneInput } from "@/components/phone-input";
 import Link from "next/link";
 
 function RegistrationForm() {
@@ -19,6 +20,7 @@ function RegistrationForm() {
   const [cedula, setCedula] = useState("");
   const [email, setEmail] = useState("");
   const [celular, setCelular] = useState("");
+  const [countryCode, setCountryCode] = useState("+57"); // Colombia por defecto
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -43,7 +45,8 @@ function RegistrationForm() {
     })
       .then(async (res) => {
         const data = await res.json();
-        if (data.success && data.valid) {
+        // Corregir: verificar data.valid explícitamente
+        if (data.success === true && data.valid === true) {
           setTokenValid(true);
           setError(null);
         } else {
@@ -61,12 +64,75 @@ function RegistrationForm() {
       });
   }, [token]);
 
+  // Validar email con dominios válidos
+  const validateEmailDomain = (email: string): boolean => {
+    const validDomains = [
+      'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com',
+      'protonmail.com', 'mail.com', 'aol.com', 'live.com', 'msn.com',
+      'yandex.com', 'zoho.com', 'gmx.com', 'tutanota.com', 'fastmail.com',
+      'mail.ru', 'qq.com', '163.com', 'sina.com', 'rediffmail.com',
+      'cox.net', 'verizon.net', 'att.net', 'sbcglobal.net', 'comcast.net',
+      'earthlink.net', 'juno.com', 'aim.com', 'rocketmail.com', 'ymail.com',
+      'me.com', 'mac.com', 'inbox.com', 'hushmail.com', 'lavabit.com',
+      'gmx.de', 'web.de', 't-online.de', 'orange.fr', 'wanadoo.fr',
+      'free.fr', 'laposte.net', 'libero.it', 'virgilio.it', 'alice.it',
+      'terra.com.br', 'uol.com.br', 'bol.com.br', 'ig.com.br', 'globo.com',
+      'hotmail.es', 'terra.es', 'telefonica.net', 'movistar.es', 'yahoo.es',
+      'gmail.co', 'outlook.co', 'hotmail.co', 'yahoo.co', 'live.co',
+      'gmail.com.co', 'outlook.com.co', 'hotmail.com.co', 'yahoo.com.co',
+    ];
+    
+    const domain = email.toLowerCase().split('@')[1];
+    return validDomains.some(validDomain => domain === validDomain || domain?.endsWith('.' + validDomain));
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     // Validaciones del cliente
+    if (!nombreCompleto.trim() || nombreCompleto.trim().length < 3) {
+      setError("El nombre completo debe tener al menos 3 caracteres");
+      setLoading(false);
+      return;
+    }
+
+    // Validar cédula: si se ingresa, debe ser exactamente 10 dígitos
+    if (cedula.trim() && cedula.trim().length !== 10) {
+      setError("La cédula debe tener exactamente 10 dígitos");
+      setLoading(false);
+      return;
+    }
+
+    // Validar email: debe tener formato válido y dominio válido
+    const emailTrimmed = email.toLowerCase().trim();
+    if (!emailTrimmed) {
+      setError("El correo electrónico es obligatorio");
+      setLoading(false);
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailTrimmed)) {
+      setError("El formato del correo electrónico no es válido");
+      setLoading(false);
+      return;
+    }
+
+    if (!validateEmailDomain(emailTrimmed)) {
+      setError("El correo electrónico debe tener un dominio válido (gmail, outlook, hotmail, etc.)");
+      setLoading(false);
+      return;
+    }
+
+    // Validar celular: obligatorio
+    if (!celular.trim() || celular.trim().length < 7) {
+      setError("El número de celular es obligatorio y debe tener al menos 7 dígitos");
+      setLoading(false);
+      return;
+    }
+
     if (password !== confirmPassword) {
       setError("Las contraseñas no coinciden");
       setLoading(false);
@@ -86,15 +152,18 @@ function RegistrationForm() {
     }
 
     try {
+      // Combinar código de país con número de celular
+      const fullPhoneNumber = `${countryCode}${celular.trim()}`;
+      
       const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token,
           nombre_completo: nombreCompleto.trim(),
-          cedula: cedula.trim(),
-          email: email.toLowerCase().trim(),
-          celular: celular.trim(),
+          cedula: cedula.trim() || null, // Opcional: null si está vacío
+          email: emailTrimmed,
+          celular: fullPhoneNumber, // Incluir código de país
           password,
         }),
       });
@@ -240,7 +309,7 @@ function RegistrationForm() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="nombre_completo">Nombre Completo</Label>
+                <Label htmlFor="nombre_completo">Nombre Completo <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -257,24 +326,31 @@ function RegistrationForm() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="cedula">Número de Cédula</Label>
+                <Label htmlFor="cedula">
+                  Número de Cédula <span className="text-muted-foreground text-xs">(Opcional)</span>
+                </Label>
                 <div className="relative">
                   <CreditCard className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     id="cedula"
                     type="text"
-                    placeholder="1234567890"
+                    placeholder="1234567890 (10 dígitos)"
                     value={cedula}
-                    onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 15))}
-                    required
-                    minLength={6}
+                    onChange={(e) => setCedula(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                    minLength={10}
+                    maxLength={10}
                     className="pl-10 bg-input border-border"
                   />
                 </div>
+                {cedula && cedula.length !== 10 && (
+                  <p className="text-xs text-muted-foreground">
+                    La cédula debe tener exactamente 10 dígitos
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Correo Electrónico</Label>
+                <Label htmlFor="email">Correo Electrónico <span className="text-destructive">*</span></Label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
@@ -288,23 +364,27 @@ function RegistrationForm() {
                     className="pl-10 bg-input border-border"
                   />
                 </div>
+                {email && !validateEmailDomain(email.toLowerCase().trim()) && (
+                  <p className="text-xs text-destructive">
+                    El correo debe tener un dominio válido (gmail, outlook, hotmail, etc.)
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="celular">Número de Celular</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    id="celular"
-                    type="tel"
-                    placeholder="3001234567"
-                    value={celular}
-                    onChange={(e) => setCelular(e.target.value.replace(/\D/g, "").slice(0, 15))}
-                    required
-                    minLength={10}
-                    className="pl-10 bg-input border-border"
-                  />
-                </div>
+                <Label htmlFor="celular">Número de Celular <span className="text-destructive">*</span></Label>
+                <PhoneInput
+                  id="celular"
+                  value={celular}
+                  onChange={setCelular}
+                  countryCode={countryCode}
+                  onCountryCodeChange={setCountryCode}
+                  required
+                  placeholder="3001234567"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Selecciona tu país e ingresa tu número de celular
+                </p>
               </div>
 
               <div className="space-y-2">

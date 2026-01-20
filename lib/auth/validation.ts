@@ -1,5 +1,31 @@
 import { z } from 'zod'
 
+// Lista de dominios de email válidos
+const validEmailDomains = [
+  'gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'icloud.com',
+  'protonmail.com', 'mail.com', 'aol.com', 'live.com', 'msn.com',
+  'yandex.com', 'zoho.com', 'gmx.com', 'tutanota.com', 'fastmail.com',
+  'mail.ru', 'qq.com', '163.com', 'sina.com', 'rediffmail.com',
+  'cox.net', 'verizon.net', 'att.net', 'sbcglobal.net', 'comcast.net',
+  'earthlink.net', 'juno.com', 'aim.com', 'rocketmail.com', 'ymail.com',
+  'me.com', 'mac.com', 'inbox.com', 'hushmail.com', 'lavabit.com',
+  'gmx.de', 'web.de', 't-online.de', 'orange.fr', 'wanadoo.fr',
+  'free.fr', 'laposte.net', 'libero.it', 'virgilio.it', 'alice.it',
+  'terra.com.br', 'uol.com.br', 'bol.com.br', 'ig.com.br', 'globo.com',
+  'hotmail.es', 'terra.es', 'telefonica.net', 'movistar.es', 'yahoo.es',
+  'gmail.co', 'outlook.co', 'hotmail.co', 'yahoo.co', 'live.co',
+  'gmail.com.co', 'outlook.com.co', 'hotmail.com.co', 'yahoo.com.co',
+];
+
+// Función para validar dominio de email
+const validateEmailDomain = (email: string): boolean => {
+  const domain = email.toLowerCase().split('@')[1];
+  if (!domain) return false;
+  return validEmailDomains.some(validDomain => 
+    domain === validDomain || domain.endsWith('.' + validDomain)
+  );
+};
+
 export const registerSchema = z.object({
   nombre_completo: z
     .string()
@@ -7,17 +33,20 @@ export const registerSchema = z.object({
     .max(100, 'El nombre es muy largo'),
   cedula: z
     .string()
-    .min(6, 'La cédula debe tener al menos 6 caracteres')
-    .max(20, 'La cédula es muy larga')
-    .regex(/^[0-9]+$/, 'La cédula solo debe contener números'),
+    .regex(/^[0-9]{10}$|^$/, 'La cédula debe tener exactamente 10 dígitos o estar vacía')
+    .optional()
+    .nullable()
+    .transform((val) => val === '' ? null : val),
   email: z
     .string()
-    .email('El correo no es válido'),
+    .email('El correo no es válido')
+    .refine((email) => validateEmailDomain(email), {
+      message: 'El correo debe tener un dominio válido (gmail, outlook, hotmail, etc.)',
+    }),
   celular: z
     .string()
-    .min(10, 'El celular debe tener al menos 10 dígitos')
-    .max(15, 'El celular es muy largo')
-    .regex(/^[0-9]+$/, 'El celular solo debe contener números'),
+    .min(1, 'El celular es obligatorio')
+    .regex(/^\+[0-9]{1,4}[0-9]{7,14}$/, 'El celular debe incluir código de país (ej: +573001234567)'),
   password: z
     .string()
     .min(6, 'La contraseña debe tener al menos 6 caracteres')
