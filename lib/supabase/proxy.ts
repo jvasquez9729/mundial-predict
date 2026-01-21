@@ -2,7 +2,15 @@ import { NextResponse, type NextRequest } from "next/server";
 import { jwtVerify } from "jose";
 import { getJwtSecret } from "@/lib/config/env";
 
-const JWT_SECRET = new TextEncoder().encode(getJwtSecret());
+// Lazy initialization para evitar ejecutar durante el build
+let JWT_SECRET_CACHE: Uint8Array | null = null;
+
+function getJwtSecretEncoded(): Uint8Array {
+  if (!JWT_SECRET_CACHE) {
+    JWT_SECRET_CACHE = new TextEncoder().encode(getJwtSecret());
+  }
+  return JWT_SECRET_CACHE;
+}
 
 const SESSION_COOKIE = "mp_session";
 
@@ -56,7 +64,8 @@ export async function updateSession(request: NextRequest) {
 
   if (token) {
     try {
-      const { payload } = await jwtVerify(token, JWT_SECRET);
+      const jwtSecret = getJwtSecretEncoded();
+      const { payload } = await jwtVerify(token, jwtSecret);
       session = payload as typeof session;
     } catch {
       // Token inválido
