@@ -55,13 +55,13 @@ export async function GET(request: NextRequest) {
           email,
           cedula
         ),
-        matches:match_id (
+        match:match_id (
           id,
           fase,
           fecha_hora,
           estadio,
-          goles_local as match_goles_local,
-          goles_visitante as match_goles_visitante,
+          goles_local,
+          goles_visitante,
           estado,
           equipo_local:equipo_local_id (
             nombre,
@@ -100,7 +100,7 @@ export async function GET(request: NextRequest) {
     const predictionsByPhase = new Map<string, typeof predictions>()
 
     predictions?.forEach((pred) => {
-      const match = pred.matches as any
+      const match = pred.match as any
       const fase = match?.fase || 'Sin fase'
       
       if (!predictionsByPhase.has(fase)) {
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
       // Preparar filas
       const rows = fasePredictions.map((pred) => {
         const user = pred.users as any
-        const match = pred.matches as any
+        const match = pred.match as any
         const equipoLocal = match?.equipo_local as any
         const equipoVisitante = match?.equipo_visitante as any
 
@@ -160,8 +160,8 @@ export async function GET(request: NextRequest) {
           equipoVisitante?.nombre || 'N/A',
           pred.goles_local ?? 'N/A',
           pred.goles_visitante ?? 'N/A',
-          match?.match_goles_local ?? 'Pendiente',
-          match?.match_goles_visitante ?? 'Pendiente',
+          match?.goles_local ?? 'Pendiente',
+          match?.goles_visitante ?? 'Pendiente',
           pred.puntos_obtenidos || 0,
           pred.es_exacto ? 'Sí' : 'No',
           match?.estado || 'N/A',
