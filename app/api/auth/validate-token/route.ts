@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 
+// Tipo explícito para el link de registro
+type RegistrationLinkForValidation = {
+  id: string
+  token: string
+  usado: boolean
+  expira_en: string
+  creado_en: string
+}
+
 /**
  * GET - Validar si un token de registro es válido, no usado y no expirado
  * Esto es más eficiente que hacer una petición POST completa solo para validar
@@ -33,8 +42,11 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Tipo explícito definido arriba
+    const typedLink: RegistrationLinkForValidation = linkData as RegistrationLinkForValidation
+
     // Verificar si ya fue usado
-    if (linkData.usado) {
+    if (typedLink.usado) {
       return NextResponse.json(
         { success: true, valid: false, error: 'Este link ya fue utilizado' },
         { status: 200 }
@@ -42,7 +54,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Verificar si expiró
-    if (new Date(linkData.expira_en) < new Date()) {
+    if (new Date(typedLink.expira_en) < new Date()) {
       return NextResponse.json(
         { success: true, valid: false, error: 'Este link ha expirado' },
         { status: 200 }
@@ -53,7 +65,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       valid: true,
-      expira_en: linkData.expira_en,
+      expira_en: typedLink.expira_en,
     })
 
   } catch (error) {

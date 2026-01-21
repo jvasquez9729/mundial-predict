@@ -6,6 +6,18 @@ import { createSession } from '@/lib/auth/session'
 import { handleApiError } from '@/lib/utils/api-error'
 import { rateLimitAuth } from '@/lib/utils/rate-limit'
 
+// Tipo explícito para el usuario en login
+type UserForLogin = {
+  id: string
+  nombre_completo: string
+  email: string
+  cedula: string | null
+  celular: string
+  password_hash: string
+  es_admin: boolean
+  creado_en: string
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Rate limiting para login
@@ -71,8 +83,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Tipo explícito definido arriba
+    const typedUser: UserForLogin = user as UserForLogin
+
     // Verificar contraseña
-    const isValid = await verifyPassword(password, user.password_hash)
+    const isValid = await verifyPassword(password, typedUser.password_hash)
     if (!isValid) {
       return NextResponse.json(
         { success: false, error: 'Contraseña incorrecta' },
@@ -82,18 +97,18 @@ export async function POST(request: NextRequest) {
 
     // Crear sesión
     await createSession({
-      userId: user.id,
-      email: user.email,
-      esAdmin: user.es_admin,
+      userId: typedUser.id,
+      email: typedUser.email,
+      esAdmin: typedUser.es_admin,
     })
 
     return NextResponse.json({
       success: true,
       user: {
-        id: user.id,
-        nombre_completo: user.nombre_completo,
-        email: user.email,
-        es_admin: user.es_admin,
+        id: typedUser.id,
+        nombre_completo: typedUser.nombre_completo,
+        email: typedUser.email,
+        es_admin: typedUser.es_admin,
       },
     })
 
