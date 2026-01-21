@@ -4,7 +4,15 @@ import { createServiceClient } from '@/lib/supabase/server'
 import type { UserPublic } from '@/lib/types/database'
 import { getJwtSecret } from '@/lib/config/env'
 
-const JWT_SECRET = new TextEncoder().encode(getJwtSecret())
+// Lazy initialization para evitar problemas durante build
+let JWT_SECRET_CACHE: Uint8Array | null = null
+
+function getJwtSecretEncoded(): Uint8Array {
+  if (!JWT_SECRET_CACHE) {
+    JWT_SECRET_CACHE = new TextEncoder().encode(getJwtSecret())
+  }
+  return JWT_SECRET_CACHE
+}
 
 const SESSION_COOKIE = 'mp_session'
 const SESSION_DURATION = 60 * 60 * 24 * 7 // 7 days in seconds
