@@ -48,7 +48,7 @@ export async function PUT(
     // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
-      .select('id, email, cedula, celular')
+      .select('id, email, cedula, celular, es_admin')
       .eq('id', id)
       .single()
 
