@@ -6,6 +6,10 @@ import { handleApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
 import { z } from 'zod'
 
+interface RouteParams {
+  params: Promise<{ id: string }>
+}
+
 // Schema para actualizar usuario
 const updateUserSchema = z.object({
   nombre_completo: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(100, 'El nombre es muy largo').optional(),
@@ -21,13 +25,13 @@ const updateUserSchema = z.object({
  */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     await requireAdmin()
 
     const body = await request.json()
-    const { id } = params
+    const { id } = await params
 
     // Validar input
     const result = updateUserSchema.safeParse(body)
@@ -174,12 +178,12 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: RouteParams
 ) {
   try {
     await requireAdmin()
 
-    const { id } = params
+    const { id } = await params
     const supabase = createServiceClient()
 
     // Verificar que el usuario existe
