@@ -161,10 +161,11 @@ function RegistrationForm() {
         body: JSON.stringify({
           token,
           nombre_completo: nombreCompleto.trim(),
-          cedula: cedula.trim() || null, // Opcional: null si está vacío
+          cedula: cedula.trim() || undefined, // Opcional: undefined si está vacío
           email: emailTrimmed,
           celular: fullPhoneNumber, // Incluir código de país
           password,
+          confirm_password: confirmPassword, // Agregar confirm_password que falta
         }),
       });
 
