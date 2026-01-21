@@ -73,10 +73,12 @@ export async function GET(request: NextRequest) {
     }
     
     // Formatear respuesta
+    // Para ngrok, incluir parámetro especial para saltarse la advertencia
+    const isNgrok = appUrl.includes('.ngrok') || appUrl.includes('ngrok-free') || appUrl.includes('ngrok.io')
     const formattedLinks = typedLinks.map(link => ({
       id: link.id,
       token: link.token,
-      url: `${appUrl}/registro?t=${link.token}`,
+      url: `${appUrl}/registro?t=${link.token}${isNgrok ? '&ngrok-skip=true' : ''}`,
       usado: link.usado,
       creado_en: link.creado_en,
       expira_en: link.expira_en,

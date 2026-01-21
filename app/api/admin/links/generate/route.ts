@@ -77,10 +77,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Formatear respuesta con URLs completas
+    // Para ngrok, incluir parámetro especial para saltarse la advertencia
+    const isNgrok = appUrl.includes('.ngrok') || appUrl.includes('ngrok-free') || appUrl.includes('ngrok.io')
     const formattedLinks = insertedLinks.map(link => ({
       id: link.id,
       token: link.token,
-      url: `${appUrl}/registro?t=${link.token}`,
+      url: `${appUrl}/registro?t=${link.token}${isNgrok ? '&ngrok-skip=true' : ''}`,
       creado_en: link.creado_en,
       expira_en: link.expira_en,
     }))
