@@ -52,8 +52,15 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Tipo explícito definido arriba
-    const typedLinks: RegistrationLink[] = (links || []) as RegistrationLink[]
+    // Normalizar explícitamente: Supabase devuelve users como array, 
+    // pero nuestro tipo espera un objeto o null
+    // Si el modelo lógico es 1 link → 1 usuario, tomamos el primer elemento
+    const typedLinks: RegistrationLink[] = (links ?? []).map(link => ({
+      ...link,
+      users: Array.isArray(link.users) 
+        ? (link.users[0] as UserFromLink | null) ?? null
+        : (link.users as UserFromLink | null) ?? null
+    }))
 
     // Obtener URL de la aplicación
     // Prioridad: 1) NEXT_PUBLIC_APP_URL, 2) Host del request, 3) localhost
