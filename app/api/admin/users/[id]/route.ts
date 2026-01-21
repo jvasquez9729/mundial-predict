@@ -10,6 +10,29 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
+// Tipos explícitos para las queries de Supabase
+interface ExistingUser {
+  id: string
+  email: string
+  cedula: string | null
+  celular: string
+  es_admin: boolean
+}
+
+interface AdminUser {
+  id: string
+}
+
+interface UpdatedUser {
+  id: string
+  nombre_completo: string
+  email: string
+  cedula: string | null
+  celular: string
+  es_admin: boolean
+  creado_en: string
+}
+
 // Schema para actualizar usuario
 const updateUserSchema = z.object({
   nombre_completo: z.string().min(3, 'El nombre debe tener al menos 3 caracteres').max(100, 'El nombre es muy largo').optional(),
@@ -59,8 +82,11 @@ export async function PUT(
       )
     }
 
+    // Tipo explícito
+    const user = existingUser as ExistingUser
+
     // No permitir quitar admin a un usuario si es el único admin
-    if (updateData.es_admin === false && existingUser.es_admin === true) {
+    if (updateData.es_admin === false && user.es_admin === true) {
       const { data: adminUsers, error: adminError } = await supabase
         .from('users')
         .select('id')
@@ -75,7 +101,8 @@ export async function PUT(
         )
       }
 
-      if (!adminUsers || adminUsers.length === 0) {
+      const admins = (adminUsers || []) as AdminUser[]
+      if (admins.length === 0) {
         return NextResponse.json(
           { success: false, error: 'No se puede quitar permisos de administrador al único admin' },
           { status: 400 }
@@ -84,7 +111,7 @@ export async function PUT(
     }
 
     // Verificar duplicados si se actualizan campos únicos
-    if (updateData.email && updateData.email !== existingUser.email) {
+    if (updateData.email && updateData.email !== user.email) {
       const { data: existingByEmail } = await supabase
         .from('users')
         .select('id')
@@ -100,7 +127,7 @@ export async function PUT(
       }
     }
 
-    if (updateData.cedula && updateData.cedula !== existingUser.cedula) {
+    if (updateData.cedula && updateData.cedula !== user.cedula) {
       const { data: existingByCedula } = await supabase
         .from('users')
         .select('id')
@@ -116,7 +143,7 @@ export async function PUT(
       }
     }
 
-    if (updateData.celular && updateData.celular !== existingUser.celular) {
+    if (updateData.celular && updateData.celular !== user.celular) {
       const { data: existingByCelular } = await supabase
         .from('users')
         .select('id')
@@ -173,7 +200,7 @@ export async function PUT(
     return NextResponse.json({
       success: true,
       message: 'Usuario actualizado exitosamente',
-      user: updatedUser,
+      user: updatedUser as UpdatedUser,
     })
 
   } catch (error) {
@@ -208,8 +235,11 @@ export async function DELETE(
       )
     }
 
+    // Tipo explícito
+    const user = existingUser as { id: string; es_admin: boolean }
+
     // No permitir eliminar el último administrador
-    if (existingUser.es_admin === true) {
+    if (user.es_admin === true) {
       const { data: adminUsers, error: adminError } = await supabase
         .from('users')
         .select('id')
@@ -223,7 +253,8 @@ export async function DELETE(
         )
       }
 
-      if (!adminUsers || adminUsers.length <= 1) {
+      const admins = (adminUsers || []) as AdminUser[]
+      if (admins.length <= 1) {
         return NextResponse.json(
           { success: false, error: 'No se puede eliminar el único administrador' },
           { status: 400 }
