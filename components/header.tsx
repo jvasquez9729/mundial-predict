@@ -91,7 +91,7 @@ export function Header() {
             <Trophy className="h-5 w-5 text-primary-foreground" />
           </div>
           <div className="flex flex-col">
-            <span className="font-sans text-lg font-bold tracking-tight text-foreground">
+            <span className="text-lg font-bold tracking-tight text-foreground">
               Mundial Predict
             </span>
             <span className="text-xs text-muted-foreground">Copa 2026</span>

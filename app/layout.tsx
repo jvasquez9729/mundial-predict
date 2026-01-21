@@ -130,7 +130,7 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className={`font-sans antialiased`}>
+      <body className={`${inter.className} antialiased`}>
         <LocaleProvider>
           {children}
         </LocaleProvider>
