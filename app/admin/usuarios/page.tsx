@@ -65,12 +65,16 @@ interface UserWithStats extends User {
   posicion?: number
 }
 
+interface EditUserForm extends Partial<User> {
+  password?: string
+}
+
 export default function AdminUsuariosPage() {
   const [usuarios, setUsuarios] = useState<UserWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [editingUser, setEditingUser] = useState<User | null>(null)
-  const [editForm, setEditForm] = useState<Partial<User>>({})
+  const [editForm, setEditForm] = useState<EditUserForm>({})
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const { toast } = useToast()
