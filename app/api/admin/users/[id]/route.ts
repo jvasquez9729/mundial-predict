@@ -10,8 +10,8 @@ interface RouteParams {
   params: Promise<{ id: string }>
 }
 
-// Tipos explícitos para las queries de Supabase
-interface ExistingUser {
+// Tipos explícitos para respuestas de Supabase
+type ExistingUser = {
   id: string
   email: string
   cedula: string | null
@@ -19,11 +19,11 @@ interface ExistingUser {
   es_admin: boolean
 }
 
-interface AdminUser {
+type AdminUser = {
   id: string
 }
 
-interface UpdatedUser {
+type UpdatedUser = {
   id: string
   nombre_completo: string
   email: string
@@ -31,6 +31,15 @@ interface UpdatedUser {
   celular: string
   es_admin: boolean
   creado_en: string
+}
+
+type UserForDelete = {
+  id: string
+  es_admin: boolean
+}
+
+type DuplicateCheck = {
+  id: string
 }
 
 // Schema para actualizar usuario
@@ -82,8 +91,8 @@ export async function PUT(
       )
     }
 
-    // Tipo explícito
-    const user = existingUser as ExistingUser
+    // Tipo explícito definido arriba
+    const user: ExistingUser = existingUser as ExistingUser
 
     // No permitir quitar admin a un usuario si es el único admin
     if (updateData.es_admin === false && user.es_admin === true) {
@@ -101,7 +110,8 @@ export async function PUT(
         )
       }
 
-      const admins = (adminUsers || []) as AdminUser[]
+      // Tipo explícito definido arriba
+      const admins: AdminUser[] = (adminUsers || []) as AdminUser[]
       if (admins.length === 0) {
         return NextResponse.json(
           { success: false, error: 'No se puede quitar permisos de administrador al único admin' },
@@ -120,10 +130,13 @@ export async function PUT(
         .maybeSingle()
 
       if (existingByEmail) {
-        return NextResponse.json(
-          { success: false, error: 'Ya existe un usuario con ese correo' },
-          { status: 400 }
-        )
+        const duplicate: DuplicateCheck = existingByEmail as DuplicateCheck
+        if (duplicate.id) {
+          return NextResponse.json(
+            { success: false, error: 'Ya existe un usuario con ese correo' },
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -136,10 +149,13 @@ export async function PUT(
         .maybeSingle()
 
       if (existingByCedula) {
-        return NextResponse.json(
-          { success: false, error: 'Ya existe un usuario con esa cédula' },
-          { status: 400 }
-        )
+        const duplicate: DuplicateCheck = existingByCedula as DuplicateCheck
+        if (duplicate.id) {
+          return NextResponse.json(
+            { success: false, error: 'Ya existe un usuario con esa cédula' },
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -152,10 +168,13 @@ export async function PUT(
         .maybeSingle()
 
       if (existingByCelular) {
-        return NextResponse.json(
-          { success: false, error: 'Ya existe un usuario con ese celular' },
-          { status: 400 }
-        )
+        const duplicate: DuplicateCheck = existingByCelular as DuplicateCheck
+        if (duplicate.id) {
+          return NextResponse.json(
+            { success: false, error: 'Ya existe un usuario con ese celular' },
+            { status: 400 }
+          )
+        }
       }
     }
 
@@ -197,10 +216,13 @@ export async function PUT(
       )
     }
 
+    // Tipo explícito definido arriba
+    const updated: UpdatedUser = updatedUser as UpdatedUser
+
     return NextResponse.json({
       success: true,
       message: 'Usuario actualizado exitosamente',
-      user: updatedUser as UpdatedUser,
+      user: updated,
     })
 
   } catch (error) {
@@ -235,8 +257,8 @@ export async function DELETE(
       )
     }
 
-    // Tipo explícito
-    const user = existingUser as { id: string; es_admin: boolean }
+    // Tipo explícito definido arriba
+    const user: UserForDelete = existingUser as UserForDelete
 
     // No permitir eliminar el último administrador
     if (user.es_admin === true) {
@@ -253,7 +275,8 @@ export async function DELETE(
         )
       }
 
-      const admins = (adminUsers || []) as AdminUser[]
+      // Tipo explícito definido arriba
+      const admins: AdminUser[] = (adminUsers || []) as AdminUser[]
       if (admins.length <= 1) {
         return NextResponse.json(
           { success: false, error: 'No se puede eliminar el único administrador' },
