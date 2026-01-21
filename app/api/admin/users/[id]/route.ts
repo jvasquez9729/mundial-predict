@@ -45,7 +45,7 @@ export async function PUT(
     const updateData = result.data
     const supabase = createServiceClient()
 
-    // Verificar que el usuario existe
+    // Verificar que el usuario existe y obtener todos los campos necesarios
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
       .select('id, email, cedula, celular, es_admin')
@@ -60,12 +60,20 @@ export async function PUT(
     }
 
     // No permitir quitar admin a un usuario si es el único admin
-    if (updateData.es_admin === false && existingUser?.es_admin) {
-      const { data: adminUsers } = await supabase
+    if (updateData.es_admin === false && existingUser.es_admin === true) {
+      const { data: adminUsers, error: adminError } = await supabase
         .from('users')
         .select('id')
         .eq('es_admin', true)
         .neq('id', id)
+
+      if (adminError) {
+        logApiError('/api/admin/users/[id]', adminError, { userId: id })
+        return NextResponse.json(
+          { success: false, error: 'Error al verificar administradores' },
+          { status: 500 }
+        )
+      }
 
       if (!adminUsers || adminUsers.length === 0) {
         return NextResponse.json(
@@ -125,7 +133,7 @@ export async function PUT(
     }
 
     // Preparar datos para actualizar
-    const updates: any = {}
+    const updates: Record<string, any> = {}
 
     if (updateData.nombre_completo) {
       updates.nombre_completo = updateData.nombre_completo.trim()
@@ -201,11 +209,19 @@ export async function DELETE(
     }
 
     // No permitir eliminar el último administrador
-    if (existingUser.es_admin) {
-      const { data: adminUsers } = await supabase
+    if (existingUser.es_admin === true) {
+      const { data: adminUsers, error: adminError } = await supabase
         .from('users')
         .select('id')
         .eq('es_admin', true)
+
+      if (adminError) {
+        logApiError('/api/admin/users/[id]', adminError, { userId: id })
+        return NextResponse.json(
+          { success: false, error: 'Error al verificar administradores' },
+          { status: 500 }
+        )
+      }
 
       if (!adminUsers || adminUsers.length <= 1) {
         return NextResponse.json(
@@ -215,7 +231,7 @@ export async function DELETE(
       }
     }
 
-    // Eliminar usuario (esto eliminará también las predicciones relacionadas si hay foreign keys)
+    // Eliminar usuario
     const { error: deleteError } = await supabase
       .from('users')
       .delete()
