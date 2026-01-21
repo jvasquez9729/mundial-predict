@@ -134,23 +134,63 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (userError) {
-      logApiError('/api/auth/register', userError, { email })
+      logApiError('/api/auth/register', userError, { email, userError })
+      
+      // Proporcionar mensaje de error más descriptivo
+      let errorMessage = 'Error al crear el usuario'
+      if (userError.code === '23505') {
+        // Violación de restricción única
+        if (userError.message.includes('email')) {
+          errorMessage = 'Ya existe un usuario con ese correo'
+        } else if (userError.message.includes('cedula')) {
+          errorMessage = 'Ya existe un usuario con esa cédula'
+        } else if (userError.message.includes('celular')) {
+          errorMessage = 'Ya existe un usuario con ese celular'
+        }
+      } else if (userError.code === '23502') {
+        // Violación de NOT NULL
+        errorMessage = 'Faltan campos obligatorios'
+      } else if (userError.message) {
+        // Incluir mensaje de error de Supabase si está disponible
+        errorMessage = userError.message.includes('duplicate') 
+          ? 'Este usuario ya existe'
+          : userError.message
+      }
+      
       return NextResponse.json(
-        { success: false, error: 'Error al crear el usuario' },
+        { success: false, error: errorMessage },
+        { status: 400 }
+      )
+    }
+
+    if (!user) {
+      return NextResponse.json(
+        { success: false, error: 'Error al crear el usuario: No se devolvió el usuario' },
         { status: 500 }
       )
     }
 
     // Marcar link como usado
-    await supabase
+    const { error: linkUpdateError } = await supabase
       .from('registration_links')
       .update({ usado: true, usado_por: user.id })
       .eq('id', linkData.id)
 
+    if (linkUpdateError) {
+      logApiError('/api/auth/register', linkUpdateError, { userId: user.id, linkId: linkData.id })
+      // No fallar si solo falla actualizar el link, ya que el usuario ya fue creado
+    }
+
     // Crear registro de predicciones especiales vacío
-    await supabase
+    const { error: specialPredError } = await supabase
       .from('special_predictions')
       .insert({ user_id: user.id })
+
+    if (specialPredError) {
+      logApiError('/api/auth/register', specialPredError, { userId: user.id })
+      // No fallar si solo falla crear special_predictions, el usuario ya fue creado
+      // Esto se puede arreglar más tarde
+    }
 
     return NextResponse.json({
       success: true,

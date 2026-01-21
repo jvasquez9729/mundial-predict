@@ -33,10 +33,21 @@ export const registerSchema = z.object({
     .max(100, 'El nombre es muy largo'),
   cedula: z
     .string()
-    .regex(/^[0-9]{10}$|^$/, 'La cédula debe tener exactamente 10 dígitos o estar vacía')
     .optional()
-    .nullable()
-    .transform((val) => val === '' ? null : val),
+    .refine(
+      (val) => {
+        if (!val || val.trim() === '') return true
+        return /^[0-9]{10}$/.test(val)
+      },
+      {
+        message: 'La cédula debe tener exactamente 10 dígitos o estar vacía',
+      }
+    )
+    .transform((val) => {
+      if (!val || val.trim() === '') return null
+      return val
+    })
+    .nullable(),
   email: z
     .string()
     .email('El correo no es válido')

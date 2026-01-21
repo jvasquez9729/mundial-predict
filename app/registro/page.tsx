@@ -161,7 +161,7 @@ function RegistrationForm() {
         body: JSON.stringify({
           token,
           nombre_completo: nombreCompleto.trim(),
-          cedula: cedula.trim() || undefined, // Opcional: undefined si está vacío
+          cedula: cedula.trim() || null, // Opcional: null si está vacío
           email: emailTrimmed,
           celular: fullPhoneNumber, // Incluir código de país
           password,
