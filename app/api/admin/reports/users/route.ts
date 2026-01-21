@@ -5,6 +5,23 @@ import { writeToSheet } from '@/lib/google/sheets'
 import { handleApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
 
+// Tipos explícitos para respuestas de Supabase
+type UserForReport = {
+  id: string
+  nombre_completo: string
+  email: string
+  cedula: string | null
+  celular: string
+  creado_en: string
+  es_admin: boolean
+}
+
+type RegistrationLinkForReport = {
+  token: string
+  creado_en: string
+  usado_por: string | null
+}
+
 /**
  * GET - Generar reporte de usuarios registrados y exportarlo a Google Sheets
  */
@@ -34,17 +51,23 @@ export async function GET() {
       throw new Error('Error al obtener usuarios')
     }
 
+    // Tipo explícito definido arriba
+    const typedUsers: UserForReport[] = (users || []) as UserForReport[]
+
     // Obtener los links de registro usados por cada usuario
-    const userIds = users?.map(u => u.id) || []
+    const userIds = typedUsers.map(u => u.id)
     const { data: registrationLinks } = await supabase
       .from('registration_links')
       .select('token, creado_en, usado_por')
       .in('usado_por', userIds)
       .eq('usado', true)
 
+    // Tipo explícito definido arriba
+    const typedLinks: RegistrationLinkForReport[] = (registrationLinks || []) as RegistrationLinkForReport[]
+
     // Crear un mapa de usuario -> link
     const linkMap = new Map<string, { token: string; creado_en: string }>()
-    registrationLinks?.forEach(link => {
+    typedLinks.forEach(link => {
       if (link.usado_por) {
         linkMap.set(link.usado_por, {
           token: link.token,
@@ -65,7 +88,7 @@ export async function GET() {
     ]
 
     // Preparar filas
-    const rows = (users || []).map((user) => {
+    const rows = typedUsers.map((user) => {
       const link = linkMap.get(user.id)
 
       return [
@@ -93,9 +116,9 @@ export async function GET() {
 
     return NextResponse.json({
       success: true,
-      message: `Reporte de ${users?.length || 0} usuarios exportado exitosamente a Google Sheets`,
+      message: `Reporte de ${typedUsers.length} usuarios exportado exitosamente a Google Sheets`,
       sheetName,
-      totalUsers: users?.length || 0,
+      totalUsers: typedUsers.length,
     })
 
   } catch (error) {

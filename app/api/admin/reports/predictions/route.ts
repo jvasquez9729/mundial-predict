@@ -10,6 +10,47 @@ const reportSchema = z.object({
   fase: z.string().optional(), // Si no se proporciona, se exportan todas las fases
 })
 
+// Tipos explícitos para respuestas de Supabase
+type MatchForReport = {
+  id: string
+}
+
+type TeamForReport = {
+  nombre: string
+  codigo: string
+}
+
+type MatchDetailForReport = {
+  id: string
+  fase: string
+  fecha_hora: string
+  estadio: string
+  goles_local: number | null
+  goles_visitante: number | null
+  estado: string
+  equipo_local: TeamForReport | null
+  equipo_visitante: TeamForReport | null
+}
+
+type UserForReport = {
+  nombre_completo: string
+  email: string
+  cedula: string | null
+}
+
+type PredictionForReport = {
+  id: string
+  user_id: string
+  match_id: string
+  goles_local: number
+  goles_visitante: number
+  puntos_obtenidos: number
+  es_exacto: boolean
+  creado_en: string
+  users: UserForReport | null
+  match: MatchDetailForReport | null
+}
+
 /**
  * GET - Generar reporte de predicciones por fase y exportarlo a Google Sheets
  */
@@ -35,7 +76,9 @@ export async function GET(request: NextRequest) {
         throw new Error('Error al obtener partidos de la fase')
       }
 
-      matchIds = matches?.map(m => m.id) || []
+      // Tipo explícito definido arriba
+      const typedMatches: MatchForReport[] = (matches || []) as MatchForReport[]
+      matchIds = typedMatches.map(m => m.id)
     }
 
     // Construir query de predicciones
@@ -96,11 +139,14 @@ export async function GET(request: NextRequest) {
       throw new Error('Error al obtener predicciones')
     }
 
-    // Agrupar por fase
-    const predictionsByPhase = new Map<string, typeof predictions>()
+    // Tipo explícito definido arriba
+    const typedPredictions: PredictionForReport[] = (predictions || []) as PredictionForReport[]
 
-    predictions?.forEach((pred) => {
-      const match = pred.match as any
+    // Agrupar por fase
+    const predictionsByPhase = new Map<string, PredictionForReport[]>()
+
+    typedPredictions.forEach((pred) => {
+      const match = pred.match
       const fase = match?.fase || 'Sin fase'
       
       if (!predictionsByPhase.has(fase)) {
@@ -135,10 +181,10 @@ export async function GET(request: NextRequest) {
 
       // Preparar filas
       const rows = fasePredictions.map((pred) => {
-        const user = pred.users as any
-        const match = pred.match as any
-        const equipoLocal = match?.equipo_local as any
-        const equipoVisitante = match?.equipo_visitante as any
+        const user = pred.users
+        const match = pred.match
+        const equipoLocal = match?.equipo_local
+        const equipoVisitante = match?.equipo_visitante
 
         const matchDate = match?.fecha_hora
           ? new Date(match.fecha_hora).toLocaleString('es-CO', {
@@ -180,7 +226,7 @@ export async function GET(request: NextRequest) {
       success: true,
       message: `Reporte de predicciones exportado exitosamente a Google Sheets`,
       exportedSheets,
-      totalPredictions: predictions?.length || 0,
+      totalPredictions: typedPredictions.length,
       phases: Array.from(predictionsByPhase.keys()),
     })
 
