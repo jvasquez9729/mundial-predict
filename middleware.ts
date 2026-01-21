@@ -18,7 +18,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(httpsUrl, 301)
   }
 
-  // 2. Asegurar que /registro con parámetros sea reconocida como ruta pública
+  // 2. Detectar si viene de ngrok y agregar header para saltarse la advertencia
+  const host = request.headers.get('host') || ''
+  const isNgrok = host.includes('.ngrok') || host.includes('ngrok-free') || host.includes('ngrok.io')
+  
+  // 3. Asegurar que /registro con parámetros sea reconocida como ruta pública
   // Esto es importante para móviles que pueden enviar la URL de forma diferente
   if (pathname === '/registro' || pathname.startsWith('/registro/')) {
     // Si hay un token, asegurar que se preserve en la URL
@@ -27,12 +31,24 @@ export async function middleware(request: NextRequest) {
       // Redirigir a la ruta correcta con el token
       const correctUrl = new URL('/registro', request.url)
       correctUrl.searchParams.set('t', token)
-      return NextResponse.redirect(correctUrl, 301)
+      const response = NextResponse.redirect(correctUrl, 301)
+      
+      // Si viene de ngrok, agregar header para saltarse la advertencia
+      if (isNgrok) {
+        response.headers.set('ngrok-skip-browser-warning', 'true')
+      }
+      
+      return response
     }
   }
 
-  // 3. Middleware de autenticación (usando la función existente)
+  // 4. Middleware de autenticación (usando la función existente)
   const response = await updateSession(request)
+
+  // 5. Si viene de ngrok, agregar header para saltarse la advertencia del navegador
+  if (isNgrok && pathname === '/registro') {
+    response.headers.set('ngrok-skip-browser-warning', 'true')
+  }
 
   return response
 }

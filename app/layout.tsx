@@ -93,6 +93,62 @@ export default function RootLayout({
                 }
                 
                 window.addEventListener('load', hideDevTools);
+                
+                // Agregar header ngrok-skip-browser-warning para saltarse la advertencia de ngrok
+                const isNgrok = window.location.hostname.includes('.ngrok') || 
+                               window.location.hostname.includes('ngrok-free') || 
+                               window.location.hostname.includes('ngrok.io');
+                
+                if (isNgrok) {
+                  // Interceptar fetch para agregar el header
+                  const originalFetch = window.fetch;
+                  window.fetch = function(...args) {
+                    const [url, options = {}] = args;
+                    const newOptions = {
+                      ...options,
+                      headers: {
+                        ...options.headers,
+                        'ngrok-skip-browser-warning': 'true'
+                      }
+                    };
+                    return originalFetch.apply(this, [url, newOptions]);
+                  };
+                  
+                  // Interceptar XMLHttpRequest para agregar el header
+                  const originalOpen = XMLHttpRequest.prototype.open;
+                  const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
+                  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
+                    this._url = url;
+                    return originalOpen.apply(this, [method, url, ...rest]);
+                  };
+                  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
+                    if (name.toLowerCase() !== 'ngrok-skip-browser-warning') {
+                      return originalSetRequestHeader.apply(this, [name, value]);
+                    }
+                  };
+                  
+                  const originalSend = XMLHttpRequest.prototype.send;
+                  XMLHttpRequest.prototype.send = function(...args) {
+                    if (!this._headers) {
+                      this._headers = {};
+                    }
+                    this._headers['ngrok-skip-browser-warning'] = 'true';
+                    const headers = this._headers;
+                    Object.keys(headers).forEach(key => {
+                      originalSetRequestHeader.call(this, key, headers[key]);
+                    });
+                    return originalSend.apply(this, args);
+                  };
+                  
+                  // Si estamos en la página de advertencia de ngrok, redirigir automáticamente
+                  if (document.body && document.body.textContent && 
+                      document.body.textContent.includes('You are about to visit')) {
+                    const visitButton = document.querySelector('button, a[href]');
+                    if (visitButton) {
+                      visitButton.click();
+                    }
+                  }
+                }
               }
             `,
           }}
