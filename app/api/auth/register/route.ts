@@ -170,15 +170,50 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Marcar link como usado
-    const { error: linkUpdateError } = await supabase
-      .from('registration_links')
-      .update({ usado: true, usado_por: user.id })
-      .eq('id', linkData.id)
+    if (!user.id) {
+      return NextResponse.json(
+        { success: false, error: 'Error al crear el usuario: ID de usuario no válido' },
+        { status: 500 }
+      )
+    }
 
-    if (linkUpdateError) {
-      logApiError('/api/auth/register', linkUpdateError, { userId: user.id, linkId: linkData.id })
-      // No fallar si solo falla actualizar el link, ya que el usuario ya fue creado
+    // Marcar link como usado - asegurarse de que linkData.id existe y es válido
+    if (linkData?.id) {
+      try {
+        // Validar que linkData.id es un valor válido antes de hacer el UPDATE
+        const linkId = linkData.id.toString().trim()
+        if (!linkId || linkId === 'undefined' || linkId === 'null') {
+          console.error('linkData.id no es válido:', linkId, 'linkData:', linkData)
+        } else {
+          const { error: linkUpdateError } = await supabase
+            .from('registration_links')
+            .update({ usado: true, usado_por: user.id })
+            .eq('id', linkId)
+
+          if (linkUpdateError) {
+            logApiError('/api/auth/register', linkUpdateError, { 
+              userId: user.id, 
+              linkId: linkId,
+              errorDetails: linkUpdateError
+            })
+            // No fallar si solo falla actualizar el link, ya que el usuario ya fue creado
+            console.error('Error al actualizar registration_link:', linkUpdateError)
+            // No retornar error al cliente, solo loguear
+          }
+        }
+      } catch (updateErr) {
+        logApiError('/api/auth/register', updateErr as Error, { 
+          userId: user.id, 
+          linkId: linkData.id 
+        })
+        console.error('Excepción al actualizar registration_link:', updateErr)
+        // No retornar error al cliente, solo loguear
+      }
+    } else {
+      const errorMsg = `linkData.id es ${linkData?.id === undefined ? 'undefined' : 'null'}, no se puede actualizar el link`
+      logApiError('/api/auth/register', new Error(errorMsg), { linkData })
+      console.error('Error:', errorMsg, linkData)
+      // No retornar error al cliente, solo loguear
     }
 
     // Crear registro de predicciones especiales vacío
