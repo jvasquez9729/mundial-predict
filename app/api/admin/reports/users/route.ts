@@ -24,11 +24,7 @@ export async function GET() {
         cedula,
         celular,
         creado_en,
-        es_admin,
-        registration_links:registration_links!usado_por (
-          token,
-          creado_en as link_creado_en
-        )
+        es_admin
       `)
       .eq('es_admin', false)
       .order('creado_en', { ascending: false })
@@ -37,6 +33,25 @@ export async function GET() {
       logApiError('/api/admin/reports/users', usersError)
       throw new Error('Error al obtener usuarios')
     }
+
+    // Obtener los links de registro usados por cada usuario
+    const userIds = users?.map(u => u.id) || []
+    const { data: registrationLinks } = await supabase
+      .from('registration_links')
+      .select('token, creado_en, usado_por')
+      .in('usado_por', userIds)
+      .eq('usado', true)
+
+    // Crear un mapa de usuario -> link
+    const linkMap = new Map<string, { token: string; creado_en: string }>()
+    registrationLinks?.forEach(link => {
+      if (link.usado_por) {
+        linkMap.set(link.usado_por, {
+          token: link.token,
+          creado_en: link.creado_en,
+        })
+      }
+    })
 
     // Preparar headers
     const headers = [
@@ -51,9 +66,7 @@ export async function GET() {
 
     // Preparar filas
     const rows = (users || []).map((user) => {
-      const link = Array.isArray(user.registration_links) 
-        ? user.registration_links[0] 
-        : user.registration_links
+      const link = linkMap.get(user.id)
 
       return [
         new Date(user.creado_en).toLocaleString('es-CO', {
@@ -65,8 +78,8 @@ export async function GET() {
         user.cedula || '',
         user.celular || '',
         link?.token || 'N/A',
-        link?.link_creado_en 
-          ? new Date(link.link_creado_en).toLocaleString('es-CO', {
+        link?.creado_en 
+          ? new Date(link.creado_en).toLocaleString('es-CO', {
               dateStyle: 'short',
               timeStyle: 'short',
             })
