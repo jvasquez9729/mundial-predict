@@ -2,6 +2,24 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/session'
 
+// Tipos explícitos para respuestas de Supabase
+type UserFromLink = {
+  id: string
+  nombre_completo: string
+  email: string
+  cedula: string | null
+}
+
+type RegistrationLink = {
+  id: string
+  token: string
+  usado: boolean
+  creado_en: string
+  expira_en: string
+  usado_por: string | null
+  users: UserFromLink | null
+}
+
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin()
@@ -34,6 +52,9 @@ export async function GET(request: NextRequest) {
       )
     }
 
+    // Tipo explícito definido arriba
+    const typedLinks: RegistrationLink[] = (links || []) as RegistrationLink[]
+
     // Obtener URL de la aplicación
     // Prioridad: 1) NEXT_PUBLIC_APP_URL, 2) Host del request, 3) localhost
     let appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
@@ -52,7 +73,7 @@ export async function GET(request: NextRequest) {
     }
     
     // Formatear respuesta
-    const formattedLinks = links.map(link => ({
+    const formattedLinks = typedLinks.map(link => ({
       id: link.id,
       token: link.token,
       url: `${appUrl}/registro?t=${link.token}`,
@@ -65,10 +86,10 @@ export async function GET(request: NextRequest) {
 
     // Estadísticas
     const stats = {
-      total: links.length,
-      usados: links.filter(l => l.usado).length,
-      disponibles: links.filter(l => !l.usado && new Date(l.expira_en) >= new Date()).length,
-      expirados: links.filter(l => !l.usado && new Date(l.expira_en) < new Date()).length,
+      total: typedLinks.length,
+      usados: typedLinks.filter(link => link.usado).length,
+      disponibles: typedLinks.filter(link => !link.usado).length,
+      expirados: typedLinks.filter(link => new Date(link.expira_en) < new Date()).length,
     }
 
     return NextResponse.json({
@@ -78,19 +99,7 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    if (error instanceof Error && error.message === 'No autenticado') {
-      return NextResponse.json(
-        { success: false, error: 'No autenticado' },
-        { status: 401 }
-      )
-    }
-    if (error instanceof Error && error.message === 'No autorizado') {
-      return NextResponse.json(
-        { success: false, error: 'No autorizado' },
-        { status: 403 }
-      )
-    }
-    console.error('Get links error:', error)
+    console.error('Error in GET /api/admin/links:', error)
     return NextResponse.json(
       { success: false, error: 'Error interno del servidor' },
       { status: 500 }
