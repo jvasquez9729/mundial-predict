@@ -1,41 +1,20 @@
-import React from "react"
-import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
-import { LocaleProvider } from '@/contexts/locale-context'
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
 import './globals.css'
+import { LocaleProvider } from '@/components/locale-provider'
+import { Analytics } from '@vercel/analytics/react'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
   title: 'Mundial Predict - Copa del Mundo 2026',
-  description: 'Predice los resultados de la Copa del Mundo 2026. Compite con amigos y sube en la clasificación.',
-  generator: 'v0.app',
-  icons: {
-    icon: [
-      {
-        url: '/icon-light-32x32.png',
-        media: '(prefers-color-scheme: light)',
-      },
-      {
-        url: '/icon-dark-32x32.png',
-        media: '(prefers-color-scheme: dark)',
-      },
-      {
-        url: '/icon.svg',
-        type: 'image/svg+xml',
-      },
-    ],
-    apple: '/apple-icon.png',
-  },
+  description: 'Predice los resultados del Mundial 2026 y compite por increíbles premios',
 }
 
-export const viewport: Viewport = {
+export const viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 5,
-  userScalable: true,
   themeColor: [
     { media: '(prefers-color-scheme: light)', color: '#ffffff' },
     { media: '(prefers-color-scheme: dark)', color: '#0a0a0a' },
@@ -49,6 +28,108 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es">
+      <head>
+        {/* Script para saltarse la advertencia de ngrok - debe ejecutarse ANTES que todo */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              // Detectar y saltarse automáticamente la página de advertencia de ngrok
+              // Este script se ejecuta ANTES de que la página cargue completamente
+              (function() {
+                function skipNgrokWarning() {
+                  // Verificar si estamos en la página de advertencia de ngrok
+                  const bodyText = (document.body && document.body.textContent) || '';
+                  const isNgrokWarning = 
+                    bodyText.includes('You are about to visit') ||
+                    bodyText.includes('ngrok.com') ||
+                    bodyText.includes('This website is served for free through ngrok') ||
+                    bodyText.includes('Are you the developer?') ||
+                    bodyText.includes('Website IP:') ||
+                    (window.location.hostname.includes('ngrok') && bodyText.includes('Visit Site'));
+                  
+                  if (isNgrokWarning) {
+                    console.log('[Ngrok Skip] Warning page detected');
+                    
+                    // Buscar el botón "Visit Site" de múltiples formas
+                    const selectors = [
+                      'button',
+                      'button[type="button"]',
+                      'a[href]',
+                      '[class*="button"]',
+                      '[class*="btn"]'
+                    ];
+                    
+                    for (const selector of selectors) {
+                      const elements = document.querySelectorAll(selector);
+                      for (const el of Array.from(elements)) {
+                        const text = el.textContent || '';
+                        if (text.includes('Visit Site') || 
+                            text.includes('Visit') || 
+                            text.includes('Continuar') ||
+                            (el.tagName === 'BUTTON' && el.offsetParent !== null)) {
+                          console.log('[Ngrok Skip] Clicking button:', el);
+                          (el as HTMLElement).click();
+                          return true;
+                        }
+                      }
+                    }
+                    
+                    // Si no hay botón, intentar navegar directamente
+                    const currentUrl = window.location.href;
+                    const tokenMatch = currentUrl.match(/[?&]t=([^&]+)/);
+                    if (tokenMatch) {
+                      const token = tokenMatch[1];
+                      const targetUrl = window.location.origin + '/registro?t=' + encodeURIComponent(token);
+                      console.log('[Ngrok Skip] Redirecting to:', targetUrl);
+                      window.location.href = targetUrl;
+                      return true;
+                    }
+                  }
+                  return false;
+                }
+                
+                // Ejecutar inmediatamente si el DOM está listo
+                if (document.readyState === 'loading') {
+                  document.addEventListener('DOMContentLoaded', skipNgrokWarning);
+                } else {
+                  skipNgrokWarning();
+                }
+                
+                // Intentar varias veces con intervalos cortos
+                let attempts = 0;
+                const maxAttempts = 30;
+                const interval = setInterval(function() {
+                  attempts++;
+                  if (skipNgrokWarning() || attempts >= maxAttempts) {
+                    clearInterval(interval);
+                  }
+                }, 50); // Verificar cada 50ms
+                
+                // Observar cambios en el DOM
+                if (document.body) {
+                  const observer = new MutationObserver(function() {
+                    if (skipNgrokWarning()) {
+                      observer.disconnect();
+                      clearInterval(interval);
+                    }
+                  });
+                  observer.observe(document.body, {
+                    childList: true,
+                    subtree: true,
+                    attributes: true,
+                    characterData: true
+                  });
+                }
+                
+                // Limpiar después de 3 segundos
+                setTimeout(function() {
+                  clearInterval(interval);
+                }, 3000);
+              })();
+            `,
+          }}
+        />
+      </head>
       <body className={`font-sans antialiased`}>
         <LocaleProvider>
           {children}
@@ -93,74 +174,6 @@ export default function RootLayout({
                 }
                 
                 window.addEventListener('load', hideDevTools);
-                
-                // Detectar y saltarse automáticamente la página de advertencia de ngrok
-                const skipNgrokWarning = () => {
-                  const isNgrokWarning = document.body && (
-                    document.body.textContent.includes('You are about to visit') ||
-                    document.body.textContent.includes('You should only visit this website') ||
-                    document.body.textContent.includes('Are you the developer?') ||
-                    document.querySelector('button[type="button"]')?.textContent?.includes('Visit Site') ||
-                    window.location.href.includes('ngrok') && document.querySelector('button')
-                  );
-                  
-                  if (isNgrokWarning) {
-                    // Buscar el botón "Visit Site" de diferentes formas
-                    const visitButton = document.querySelector('button[type="button"]') ||
-                                       document.querySelector('button') ||
-                                       document.querySelector('a[href]') ||
-                                       Array.from(document.querySelectorAll('button')).find(btn => 
-                                         btn.textContent.includes('Visit') || 
-                                         btn.textContent.includes('Site') ||
-                                         btn.textContent.includes('Continuar')
-                                       );
-                    
-                    if (visitButton) {
-                      console.log('Ngrok warning detected, clicking Visit Site button...');
-                      visitButton.click();
-                      return true;
-                    }
-                    
-                    // Si no hay botón, intentar navegar directamente a la URL sin el warning
-                    const currentUrl = window.location.href;
-                    if (currentUrl.includes('/registro')) {
-                      // Ya estamos en /registro, solo necesitamos esperar
-                      return false;
-                    }
-                    
-                    // Intentar encontrar la URL destino en la página
-                    const urlMatch = document.body.textContent.match(/https?:\/\/[^\s]+\.ngrok[^\s]+/);
-                    if (urlMatch) {
-                      window.location.href = urlMatch[0] + window.location.search;
-                      return true;
-                    }
-                  }
-                  return false;
-                };
-                
-                // Ejecutar inmediatamente
-                if (!skipNgrokWarning()) {
-                  // Intentar varias veces porque ngrok puede cargar la página lentamente
-                  let attempts = 0;
-                  const maxAttempts = 10;
-                  const checkInterval = setInterval(() => {
-                    attempts++;
-                    if (skipNgrokWarning() || attempts >= maxAttempts) {
-                      clearInterval(checkInterval);
-                    }
-                  }, 100);
-                  
-                  // También escuchar cambios en el DOM
-                  const ngrokObserver = new MutationObserver(() => {
-                    if (skipNgrokWarning()) {
-                      ngrokObserver.disconnect();
-                    }
-                  });
-                  
-                  if (document.body) {
-                    ngrokObserver.observe(document.body, { childList: true, subtree: true });
-                  }
-                }
               }
             `,
           }}
