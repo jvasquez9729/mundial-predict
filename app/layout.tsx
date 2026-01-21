@@ -94,59 +94,71 @@ export default function RootLayout({
                 
                 window.addEventListener('load', hideDevTools);
                 
-                // Agregar header ngrok-skip-browser-warning para saltarse la advertencia de ngrok
-                const isNgrok = window.location.hostname.includes('.ngrok') || 
-                               window.location.hostname.includes('ngrok-free') || 
-                               window.location.hostname.includes('ngrok.io');
-                
-                if (isNgrok) {
-                  // Interceptar fetch para agregar el header
-                  const originalFetch = window.fetch;
-                  window.fetch = function(...args) {
-                    const [url, options = {}] = args;
-                    const newOptions = {
-                      ...options,
-                      headers: {
-                        ...options.headers,
-                        'ngrok-skip-browser-warning': 'true'
-                      }
-                    };
-                    return originalFetch.apply(this, [url, newOptions]);
-                  };
+                // Detectar y saltarse automáticamente la página de advertencia de ngrok
+                const skipNgrokWarning = () => {
+                  const isNgrokWarning = document.body && (
+                    document.body.textContent.includes('You are about to visit') ||
+                    document.body.textContent.includes('You should only visit this website') ||
+                    document.body.textContent.includes('Are you the developer?') ||
+                    document.querySelector('button[type="button"]')?.textContent?.includes('Visit Site') ||
+                    window.location.href.includes('ngrok') && document.querySelector('button')
+                  );
                   
-                  // Interceptar XMLHttpRequest para agregar el header
-                  const originalOpen = XMLHttpRequest.prototype.open;
-                  const originalSetRequestHeader = XMLHttpRequest.prototype.setRequestHeader;
-                  XMLHttpRequest.prototype.open = function(method, url, ...rest) {
-                    this._url = url;
-                    return originalOpen.apply(this, [method, url, ...rest]);
-                  };
-                  XMLHttpRequest.prototype.setRequestHeader = function(name, value) {
-                    if (name.toLowerCase() !== 'ngrok-skip-browser-warning') {
-                      return originalSetRequestHeader.apply(this, [name, value]);
-                    }
-                  };
-                  
-                  const originalSend = XMLHttpRequest.prototype.send;
-                  XMLHttpRequest.prototype.send = function(...args) {
-                    if (!this._headers) {
-                      this._headers = {};
-                    }
-                    this._headers['ngrok-skip-browser-warning'] = 'true';
-                    const headers = this._headers;
-                    Object.keys(headers).forEach(key => {
-                      originalSetRequestHeader.call(this, key, headers[key]);
-                    });
-                    return originalSend.apply(this, args);
-                  };
-                  
-                  // Si estamos en la página de advertencia de ngrok, redirigir automáticamente
-                  if (document.body && document.body.textContent && 
-                      document.body.textContent.includes('You are about to visit')) {
-                    const visitButton = document.querySelector('button, a[href]');
+                  if (isNgrokWarning) {
+                    // Buscar el botón "Visit Site" de diferentes formas
+                    const visitButton = document.querySelector('button[type="button"]') ||
+                                       document.querySelector('button') ||
+                                       document.querySelector('a[href]') ||
+                                       Array.from(document.querySelectorAll('button')).find(btn => 
+                                         btn.textContent.includes('Visit') || 
+                                         btn.textContent.includes('Site') ||
+                                         btn.textContent.includes('Continuar')
+                                       );
+                    
                     if (visitButton) {
+                      console.log('Ngrok warning detected, clicking Visit Site button...');
                       visitButton.click();
+                      return true;
                     }
+                    
+                    // Si no hay botón, intentar navegar directamente a la URL sin el warning
+                    const currentUrl = window.location.href;
+                    if (currentUrl.includes('/registro')) {
+                      // Ya estamos en /registro, solo necesitamos esperar
+                      return false;
+                    }
+                    
+                    // Intentar encontrar la URL destino en la página
+                    const urlMatch = document.body.textContent.match(/https?:\/\/[^\s]+\.ngrok[^\s]+/);
+                    if (urlMatch) {
+                      window.location.href = urlMatch[0] + window.location.search;
+                      return true;
+                    }
+                  }
+                  return false;
+                };
+                
+                // Ejecutar inmediatamente
+                if (!skipNgrokWarning()) {
+                  // Intentar varias veces porque ngrok puede cargar la página lentamente
+                  let attempts = 0;
+                  const maxAttempts = 10;
+                  const checkInterval = setInterval(() => {
+                    attempts++;
+                    if (skipNgrokWarning() || attempts >= maxAttempts) {
+                      clearInterval(checkInterval);
+                    }
+                  }, 100);
+                  
+                  // También escuchar cambios en el DOM
+                  const ngrokObserver = new MutationObserver(() => {
+                    if (skipNgrokWarning()) {
+                      ngrokObserver.disconnect();
+                    }
+                  });
+                  
+                  if (document.body) {
+                    ngrokObserver.observe(document.body, { childList: true, subtree: true });
                   }
                 }
               }

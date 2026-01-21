@@ -22,12 +22,30 @@ export async function middleware(request: NextRequest) {
   const host = request.headers.get('host') || ''
   const isNgrok = host.includes('.ngrok') || host.includes('ngrok-free') || host.includes('ngrok.io')
   
-  // 3. Asegurar que /registro con parámetros sea reconocida como ruta pública
+  // 3. Manejar ruta especial /registro/redirect para ngrok
+  if (pathname === '/registro/redirect') {
+    const token = searchParams.get('t')
+    if (token) {
+      // Redirigir a /registro con el token preservado
+      const redirectUrl = new URL('/registro', request.url)
+      redirectUrl.searchParams.set('t', token)
+      const response = NextResponse.redirect(redirectUrl, 302)
+      
+      // Agregar header para saltarse la advertencia de ngrok
+      if (isNgrok) {
+        response.headers.set('ngrok-skip-browser-warning', 'true')
+      }
+      
+      return response
+    }
+  }
+  
+  // 4. Asegurar que /registro con parámetros sea reconocida como ruta pública
   // Esto es importante para móviles que pueden enviar la URL de forma diferente
   if (pathname === '/registro' || pathname.startsWith('/registro/')) {
     // Si hay un token, asegurar que se preserve en la URL
     const token = searchParams.get('t')
-    if (token && pathname !== '/registro') {
+    if (token && pathname !== '/registro' && pathname !== '/registro/redirect') {
       // Redirigir a la ruta correcta con el token
       const correctUrl = new URL('/registro', request.url)
       correctUrl.searchParams.set('t', token)
