@@ -39,6 +39,13 @@ interface LinkStats {
   expirados: number
 }
 
+function getCookie(name: string) {
+  return document.cookie
+    .split('; ')
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split('=')[1]
+}
+
 export default function AdminLinksPage() {
   const [links, setLinks] = useState<RegistrationLink[]>([])
   const [stats, setStats] = useState<LinkStats | null>(null)
@@ -78,9 +85,15 @@ export default function AdminLinksPage() {
     setSuccess(null)
 
     try {
+      const csrfToken = getCookie('mp_csrf')
       const res = await fetch('/api/admin/links/generate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(csrfToken
+            ? { 'X-CSRF-Token': decodeURIComponent(csrfToken) }
+            : {}),
+        },
         body: JSON.stringify({ cantidad }),
       })
 
