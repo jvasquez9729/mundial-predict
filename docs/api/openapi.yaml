@@ -1,0 +1,501 @@
+openapi: 3.0.3
+info:
+  title: Mundial Predict API
+  description: API para el sistema de predicciones del Mundial 2026
+  version: 1.0.0
+  contact:
+    name: Mundial Predict Team
+    email: support@mundialpredict.com
+
+servers:
+  - url: http://localhost:3000/api
+    description: Servidor de desarrollo
+  - url: https://mundialpredict.com/api
+    description: Servidor de producción
+
+tags:
+  - name: Auth
+    description: Autenticación y gestión de sesiones
+  - name: Matches
+    description: Gestión de partidos
+  - name: Predictions
+    description: Predicciones de usuarios
+  - name: Leaderboard
+    description: Clasificación de usuarios
+  - name: Admin
+    description: Endpoints de administración
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Verifica el estado de la aplicación y servicios
+      responses:
+        '200':
+          description: Aplicación saludable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [healthy, degraded]
+                  timestamp:
+                    type: string
+                    format: date-time
+                  uptime:
+                    type: number
+                  environment:
+                    type: string
+                  services:
+                    type: object
+                    properties:
+                      database:
+                        type: string
+                        enum: [healthy, unhealthy]
+        '503':
+          description: Servicio no disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Iniciar sesión
+      description: Autentica un usuario y crea una sesión
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - identifier
+                - password
+                - identifier_type
+              properties:
+                identifier:
+                  type: string
+                  description: Email, cédula o celular
+                password:
+                  type: string
+                  format: password
+                identifier_type:
+                  type: string
+                  enum: [email, cedula, celular]
+      responses:
+        '200':
+          description: Login exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '401':
+          description: Credenciales inválidas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Demasiados intentos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              headers:
+                Retry-After:
+                  type: integer
+
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Registrar usuario
+      description: Registra un nuevo usuario con token de invitación
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nombre_completo
+                - cedula
+                - email
+                - celular
+                - password
+                - confirm_password
+                - token
+              properties:
+                nombre_completo:
+                  type: string
+                  minLength: 3
+                  maxLength: 100
+                cedula:
+                  type: string
+                  pattern: '^[0-9]+$'
+                email:
+                  type: string
+                  format: email
+                celular:
+                  type: string
+                  pattern: '^[0-9]+$'
+                password:
+                  type: string
+                  minLength: 6
+                confirm_password:
+                  type: string
+                token:
+                  type: string
+      responses:
+        '200':
+          description: Registro exitoso
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  user:
+                    $ref: '#/components/schemas/User'
+        '400':
+          description: Error de validación
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Demasiados intentos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /matches:
+    get:
+      tags:
+        - Matches
+      summary: Listar partidos
+      description: Obtiene lista de partidos con filtros opcionales
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: fase
+          in: query
+          schema:
+            type: string
+            enum: [grupos, octavos, cuartos, semifinal, tercer_puesto, final]
+        - name: estado
+          in: query
+          schema:
+            type: string
+            enum: [proximo, en_vivo, finalizado]
+        - name: upcoming
+          in: query
+          schema:
+            type: boolean
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: Lista de partidos
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  matches:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Match'
+                  total:
+                    type: integer
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /predictions:
+    get:
+      tags:
+        - Predictions
+      summary: Obtener predicciones del usuario
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: match_id
+          in: query
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Lista de predicciones
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  predictions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Prediction'
+                  stats:
+                    $ref: '#/components/schemas/PredictionStats'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Predictions
+      summary: Crear o actualizar predicción
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - match_id
+                - goles_local
+                - goles_visitante
+              properties:
+                match_id:
+                  type: string
+                  format: uuid
+                goles_local:
+                  type: integer
+                  minimum: 0
+                  maximum: 20
+                goles_visitante:
+                  type: integer
+                  minimum: 0
+                  maximum: 20
+      responses:
+        '200':
+          description: Predicción guardada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  prediction:
+                    $ref: '#/components/schemas/Prediction'
+        '400':
+          description: Error de validación o predicciones cerradas
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: No autenticado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '429':
+          description: Demasiadas solicitudes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /leaderboard:
+    get:
+      tags:
+        - Leaderboard
+      summary: Obtener clasificación
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: Clasificación
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  leaderboard:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LeaderboardEntry'
+                  mi_posicion:
+                    type: integer
+                  total_participantes:
+                    type: integer
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: mp_session
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre_completo:
+          type: string
+        email:
+          type: string
+          format: email
+        es_admin:
+          type: boolean
+
+    Match:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        fase:
+          type: string
+        fecha_hora:
+          type: string
+          format: date-time
+        estadio:
+          type: string
+        goles_local:
+          type: integer
+          nullable: true
+        goles_visitante:
+          type: integer
+          nullable: true
+        estado:
+          type: string
+        predicciones_cerradas:
+          type: boolean
+        equipo_local:
+          $ref: '#/components/schemas/Team'
+        equipo_visitante:
+          $ref: '#/components/schemas/Team'
+
+    Team:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        codigo:
+          type: string
+        bandera_url:
+          type: string
+
+    Prediction:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        match_id:
+          type: string
+          format: uuid
+        goles_local:
+          type: integer
+        goles_visitante:
+          type: integer
+        puntos_obtenidos:
+          type: integer
+        es_exacto:
+          type: boolean
+        creado_en:
+          type: string
+          format: date-time
+
+    PredictionStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        puntos_totales:
+          type: integer
+        marcadores_exactos:
+          type: integer
+        aciertos:
+          type: integer
+
+    LeaderboardEntry:
+      type: object
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        nombre_completo:
+          type: string
+        puntos_totales:
+          type: integer
+        marcadores_exactos:
+          type: integer
+        predicciones_correctas:
+          type: integer
+        total_predicciones:
+          type: integer
+        posicion:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required:
+        - success
+        - error
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: string
+        code:
+          type: string
+        details:
+          type: array
+          items:
+            type: object

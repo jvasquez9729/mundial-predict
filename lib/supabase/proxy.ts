@@ -1,0 +1,110 @@
+import { NextResponse, type NextRequest } from "next/server";
+import { jwtVerify } from "jose";
+import { getJwtSecret } from "@/lib/config/env";
+
+// Lazy initialization para evitar ejecutar durante el build
+let JWT_SECRET_CACHE: Uint8Array | null = null;
+
+function getJwtSecretEncoded(): Uint8Array {
+  if (!JWT_SECRET_CACHE) {
+    JWT_SECRET_CACHE = new TextEncoder().encode(getJwtSecret());
+  }
+  return JWT_SECRET_CACHE;
+}
+
+const SESSION_COOKIE = "mp_session";
+
+// Rutas públicas
+const publicRoutes = [
+  "/", 
+  "/login", 
+  "/reglas", 
+  "/registro",
+  "/forgot-password",
+  "/reset-password",
+  "/api/auth/login", 
+  "/api/auth/register",
+  "/api/auth/validate-token",
+  "/api/auth/forgot-password",
+  "/api/auth/reset-password",
+  "/api/leaderboard",
+  "/api/participants",
+  "/api/teams",
+  "/api/matches",
+  "/api/health"
+];
+
+// Rutas admin
+const adminRoutes = ["/admin"];
+
+function isPublicRoute(pathname: string): boolean {
+  // Normalizar pathname para manejar diferentes formatos de URL
+  const normalizedPath = pathname.split('?')[0].split('#')[0]
+  
+  return (
+    publicRoutes.some((route) => normalizedPath === route || normalizedPath.startsWith(route + "/")) ||
+    normalizedPath.startsWith("/registro") ||
+    normalizedPath.startsWith("/api/auth/")
+  );
+}
+
+function isAdminRoute(pathname: string): boolean {
+  return (
+    adminRoutes.some((route) => pathname.startsWith(route)) ||
+    pathname.startsWith("/api/admin/")
+  );
+}
+
+export async function updateSession(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Obtener token de sesión
+  type SessionData = { userId: string; email: string; esAdmin: boolean };
+  const token = request.cookies.get(SESSION_COOKIE)?.value;
+  let session: SessionData | null = null;
+
+  if (token) {
+    try {
+      const jwtSecret = getJwtSecretEncoded();
+      const { payload } = await jwtVerify(token, jwtSecret);
+      session = payload as unknown as SessionData;
+    } catch {
+      // Token inválido
+    }
+  }
+
+  // Rutas públicas
+  if (isPublicRoute(pathname)) {
+    // Si está logueado e intenta ir a login/registro/recuperar, redirigir a dashboard
+    if (session && (pathname === "/login" || pathname.startsWith("/registro") || pathname.startsWith("/forgot-password"))) {
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+    return NextResponse.next({ request });
+  }
+
+  // Rutas protegidas - requieren sesión
+  if (!session) {
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { success: false, error: "No autenticado" },
+        { status: 401 }
+      );
+    }
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Rutas admin
+  if (isAdminRoute(pathname)) {
+    if (!session.esAdmin) {
+      if (pathname.startsWith("/api/")) {
+        return NextResponse.json(
+          { success: false, error: "No autorizado" },
+          { status: 403 }
+        );
+      }
+      return NextResponse.redirect(new URL("/dashboard", request.url));
+    }
+  }
+
+  return NextResponse.next({ request });
+}
