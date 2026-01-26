@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Users, Link2, Trophy, Target, Loader2 } from 'lucide-react'
+import { Users, Link2, Trophy, Target, Loader2, CalendarCheck, Flag } from 'lucide-react'
 
 interface AdminStats {
   totalUsuarios: number
@@ -20,20 +20,23 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        // Fetch links stats
-        const linksRes = await fetch('/api/admin/links')
+        const [linksRes, leaderboardRes, usersRes] = await Promise.all([
+          fetch('/api/admin/links', { credentials: 'include' }),
+          fetch('/api/leaderboard', { credentials: 'include' }),
+          fetch('/api/admin/users?limit=1&metadata=1', { credentials: 'include' }),
+        ])
         const linksData = await linksRes.json()
-
-        // Fetch leaderboard for user count
-        const leaderboardRes = await fetch('/api/leaderboard')
         const leaderboardData = await leaderboardRes.json()
+        const usersData = await usersRes.json()
+
+        const matchStats = usersData.matchStats
 
         setStats({
           totalUsuarios: leaderboardData.total_participantes || 0,
           linksDisponibles: linksData.stats?.disponibles || 0,
           linksUsados: linksData.stats?.usados || 0,
-          totalPartidos: 0, // TODO: Fetch from matches API
-          partidosFinalizados: 0,
+          totalPartidos: matchStats?.totalPartidos ?? 0,
+          partidosFinalizados: matchStats?.partidosFinalizados ?? 0,
           pozoTotal: leaderboardData.pozo?.pozo_total || 0,
         })
       } catch (error) {
@@ -46,6 +49,18 @@ export default function AdminDashboard() {
     fetchStats()
   }, [])
 
+  const statCards = useMemo(
+    () => [
+      { title: 'Total Usuarios', value: stats?.totalUsuarios || 0, icon: Users, color: 'text-primary', bgColor: 'bg-primary/10' },
+      { title: 'Links Disponibles', value: stats?.linksDisponibles || 0, icon: Link2, color: 'text-success', bgColor: 'bg-success/10' },
+      { title: 'Links Usados', value: stats?.linksUsados || 0, icon: Target, color: 'text-accent', bgColor: 'bg-accent/10' },
+      { title: 'Pozo Total', value: `$${((stats?.pozoTotal || 0) / 1000).toFixed(0)}k`, icon: Trophy, color: 'text-destructive', bgColor: 'bg-destructive/10' },
+      { title: 'Total Partidos', value: stats?.totalPartidos ?? 0, icon: Flag, color: 'text-foreground', bgColor: 'bg-muted' },
+      { title: 'Partidos Finalizados', value: stats?.partidosFinalizados ?? 0, icon: CalendarCheck, color: 'text-foreground', bgColor: 'bg-muted' },
+    ],
+    [stats?.totalUsuarios, stats?.linksDisponibles, stats?.linksUsados, stats?.pozoTotal, stats?.totalPartidos, stats?.partidosFinalizados]
+  )
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -53,37 +68,6 @@ export default function AdminDashboard() {
       </div>
     )
   }
-
-  const statCards = [
-    {
-      title: 'Total Usuarios',
-      value: stats?.totalUsuarios || 0,
-      icon: Users,
-      color: 'text-primary',
-      bgColor: 'bg-primary/10',
-    },
-    {
-      title: 'Links Disponibles',
-      value: stats?.linksDisponibles || 0,
-      icon: Link2,
-      color: 'text-success',
-      bgColor: 'bg-success/10',
-    },
-    {
-      title: 'Links Usados',
-      value: stats?.linksUsados || 0,
-      icon: Target,
-      color: 'text-accent',
-      bgColor: 'bg-accent/10',
-    },
-    {
-      title: 'Pozo Total',
-      value: `$${((stats?.pozoTotal || 0) / 1000).toFixed(0)}k`,
-      icon: Trophy,
-      color: 'text-destructive',
-      bgColor: 'bg-destructive/10',
-    },
-  ]
 
   return (
     <div className="space-y-6">
@@ -94,7 +78,7 @@ export default function AdminDashboard() {
         </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {statCards.map((stat) => (
           <Card key={stat.title} className="border-border bg-card">
             <CardContent className="p-4">
@@ -156,28 +140,20 @@ export default function AdminDashboard() {
           <CardContent>
             <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">1er Lugar (55%)</span>
-                <span className="font-bold text-foreground">
-                  ${((stats?.pozoTotal || 0) * 0.55 / 1000).toFixed(0)}k
-                </span>
+                <span className="text-sm text-muted-foreground">1er Lugar</span>
+                <span className="font-bold text-foreground">3.000.000 COP</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Más Exactos (25%)</span>
-                <span className="font-bold text-foreground">
-                  ${((stats?.pozoTotal || 0) * 0.25 / 1000).toFixed(0)}k
-                </span>
+                <span className="text-sm text-muted-foreground">2do Lugar</span>
+                <span className="font-bold text-foreground">1.500.000 COP</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Fase Grupos (10%)</span>
-                <span className="font-bold text-foreground">
-                  ${((stats?.pozoTotal || 0) * 0.10 / 1000).toFixed(0)}k
-                </span>
-              </div>
-              <div className="flex items-center justify-between border-t border-border pt-3 mt-3">
-                <span className="text-sm font-medium text-muted-foreground">Reserva (10%)</span>
-                <span className="font-bold text-muted-foreground">
-                  ${((stats?.pozoTotal || 0) * 0.10 / 1000).toFixed(0)}k
-                </span>
+              <div className="flex flex-col gap-1 border-t border-border pt-3 mt-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-muted-foreground">Premio especial</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Más puntos en la primera fecha de fase de grupos: Camiseta de la Selección Colombia 2026
+                </p>
               </div>
             </div>
           </CardContent>

@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getSession, requireAdmin } from '@/lib/auth/session'
 import { handleApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
+import { validateLimit } from '@/lib/utils/pagination'
 import { z } from 'zod'
 
 // Schema para crear partido (admin)
@@ -28,7 +29,19 @@ export async function GET(request: NextRequest) {
     const fase = searchParams.get('fase')
     const estado = searchParams.get('estado')
     const upcoming = searchParams.get('upcoming') === 'true'
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!, 10) : undefined
+    
+    // Validar límite si se proporciona
+    let limit: number | undefined
+    if (searchParams.get('limit')) {
+      try {
+        limit = validateLimit(searchParams.get('limit'))
+      } catch (error) {
+        return NextResponse.json(
+          { success: false, error: error instanceof Error ? error.message : 'Parámetro limit inválido' },
+          { status: 400 }
+        )
+      }
+    }
 
     const supabase = createServiceClient()
 

@@ -53,7 +53,7 @@ export default function AdminLinksPage() {
   async function fetchLinks() {
     try {
       setLoading(true)
-      const res = await fetch('/api/admin/links')
+      const res = await fetch('/api/admin/links', { credentials: 'include' })
       const data = await res.json()
 
       if (data.success) {
@@ -82,6 +82,7 @@ export default function AdminLinksPage() {
       const res = await fetch('/api/admin/links/generate', {
         method: 'POST',
         headers: getCsrfHeaders(),
+        credentials: 'include',
         body: JSON.stringify({ cantidad }),
       })
 

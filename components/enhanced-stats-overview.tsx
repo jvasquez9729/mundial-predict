@@ -1,7 +1,7 @@
 "use client";
 
-import React from "react"
-import { Trophy, Target, TrendingUp, Flame } from "lucide-react";
+import React, { useEffect, useState } from "react"
+import { Trophy, Target, TrendingUp, Flame, Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { BlurFade } from "@/components/ui/blur-fade";
@@ -54,35 +54,114 @@ function StatCard({ title, value, subtitle, icon, trend, accentColor, delay }: S
   );
 }
 
+interface StatsMe {
+  posicion: number;
+  total_participantes: number;
+  puntos_totales: number;
+  predicciones_correctas: number;
+  total_predicciones: number;
+  precision: number;
+  racha_actual: number;
+}
+
 export function EnhancedStatsOverview() {
-  const stats: Omit<StatCardProps, 'delay'>[] = [
+  const [stats, setStats] = useState<StatsMe | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function fetchStats() {
+      try {
+        const res = await fetch("/api/stats/me", { credentials: "include" });
+        if (cancelled) return;
+        if (res.status === 401) {
+          setHasSession(false);
+          setStats(null);
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.success && data.posicion !== undefined) {
+          setHasSession(true);
+          setStats({
+            posicion: data.posicion ?? 0,
+            total_participantes: data.total_participantes ?? 0,
+            puntos_totales: data.puntos_totales ?? 0,
+            predicciones_correctas: data.predicciones_correctas ?? 0,
+            total_predicciones: data.total_predicciones ?? 0,
+            precision: data.precision ?? 0,
+            racha_actual: data.racha_actual ?? 0,
+          });
+        } else {
+          setHasSession(false);
+          setStats(null);
+        }
+      } catch {
+        if (!cancelled) {
+          setHasSession(false);
+          setStats(null);
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    fetchStats();
+    return () => { cancelled = true; };
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="border-border bg-card overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-center gap-2 py-6">
+                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">Cargando…</span>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!hasSession || !stats) {
+    return (
+      <div className="rounded-lg border border-border bg-card p-6 text-center">
+        <p className="text-sm text-muted-foreground">
+          Inicia sesión para ver tus estadísticas.
+        </p>
+      </div>
+    );
+  }
+
+  const cards: Omit<StatCardProps, "delay">[] = [
     {
       title: "Tu Posición",
-      value: "#42",
-      subtitle: "de 1,234 jugadores",
+      value: `#${stats.posicion}`,
+      subtitle: `de ${stats.total_participantes} jugadores`,
       icon: <Trophy className="h-5 w-5 text-primary" />,
-      trend: { value: 8, isPositive: true },
       accentColor: "bg-primary/10",
     },
     {
       title: "Puntos Totales",
-      value: "1,850",
-      subtitle: "380 esta semana",
+      value: stats.puntos_totales.toLocaleString(),
+      subtitle: "puntos acumulados",
       icon: <Target className="h-5 w-5 text-accent" />,
-      trend: { value: 12, isPositive: true },
       accentColor: "bg-accent/10",
     },
     {
       title: "Precisión",
-      value: "67%",
-      subtitle: "32 de 48 aciertos",
+      value: `${stats.precision}%`,
+      subtitle: `${stats.predicciones_correctas} de ${stats.total_predicciones} aciertos`,
       icon: <TrendingUp className="h-5 w-5 text-success" />,
-      trend: { value: 5, isPositive: true },
       accentColor: "bg-success/10",
     },
     {
       title: "Racha Actual",
-      value: "5",
+      value: String(stats.racha_actual),
       subtitle: "aciertos consecutivos",
       icon: <Flame className="h-5 w-5 text-destructive" />,
       accentColor: "bg-destructive/10",
@@ -91,7 +170,7 @@ export function EnhancedStatsOverview() {
 
   return (
     <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-      {stats.map((stat, index) => (
+      {cards.map((stat, index) => (
         <StatCard key={stat.title} {...stat} delay={index * 0.1} />
       ))}
     </div>

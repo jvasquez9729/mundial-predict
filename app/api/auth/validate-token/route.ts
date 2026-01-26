@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { handleApiError } from '@/lib/utils/api-error'
 
 // Tipo explícito para el link de registro
 type RegistrationLinkForValidation = {
@@ -69,10 +70,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Validate token error:', error)
-    return NextResponse.json(
-      { success: false, valid: false, error: 'Error al validar token' },
-      { status: 500 }
-    )
+    return handleApiError('/api/auth/validate-token', error)
   }
 }

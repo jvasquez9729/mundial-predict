@@ -51,7 +51,13 @@ Aplicación web para predecir los resultados de la Copa del Mundo 2026. Los usua
 
 4. **Configurar base de datos**
 
-   Ejecuta las migraciones de Supabase desde `supabase/migrations/`
+   - Ejecuta las migraciones desde `supabase/migrations/` (Supabase Dashboard → SQL Editor, o CLI).
+   - **Seed de partidos Mundial 2026:** equipos y 72 partidos de fase de grupos. Ejecuta **una vez** por proyecto Supabase:
+     ```bash
+     npm run seed-wc2026-groups
+     ```
+     Requiere `NEXT_PUBLIC_SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY` en `.env.local`.  
+     Alternativa: pegar y ejecutar `scripts/seed-world-cup-2026-groups.sql` en el SQL Editor de Supabase.
 
 5. **Ejecutar en desarrollo**
    ```bash
@@ -118,6 +124,8 @@ npm start
 - `npm run build`: Build de producción
 - `npm run start`: Iniciar servidor de producción
 - `npm run lint`: Linter
+- `npm run seed-wc2026-groups`: Seed equipos + partidos fase de grupos Mundial 2026 (ejecutar una vez por Supabase)
+- `npm run create-admin`: Crear usuario administrador
 
 ## 📝 API Routes
 
@@ -176,6 +184,13 @@ Las contribuciones son bienvenidas. Por favor:
 ## 📄 Licencia
 
 [Tu licencia aquí]
+
+## 🗄️ Base de datos, GitHub y despliegue
+
+- **Datos en Supabase:** equipos, partidos, usuarios, etc. viven en tu proyecto Supabase. No se suben a GitHub.
+- **Al hacer push a GitHub** solo subes código (app, scripts, migraciones). Supabase no se sincroniza con el repo.
+- **Mismo Supabase en local y Vercel:** si usas las mismas env (`NEXT_PUBLIC_SUPABASE_URL`, etc.) en Vercel, la app en producción ya lee los mismos datos. No hace falta volver a ejecutar el seed.
+- **Supabase nuevo** (otro proyecto, staging, otro dev): ejecuta migraciones y luego `npm run seed-wc2026-groups` (o el SQL del seed) contra ese proyecto. El seed es idempotente (puedes repetirlo sin duplicar).
 
 ## 🆘 Soporte
 

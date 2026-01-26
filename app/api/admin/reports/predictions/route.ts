@@ -89,6 +89,8 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url)
     const faseParam = searchParams.get('fase')
+    const userIdParam = searchParams.get('user_id')
+    const formatJson = searchParams.get('format') === 'json'
 
     const supabase = createServiceClient()
 
@@ -151,7 +153,13 @@ export async function GET(request: NextRequest) {
     if (matchIds && matchIds.length > 0) {
       predictionsQuery = predictionsQuery.in('match_id', matchIds)
     } else if (matchIds && matchIds.length === 0) {
-      // Si la fase no tiene partidos, devolver vacío
+      if (formatJson && userIdParam) {
+        return NextResponse.json({
+          success: true,
+          predictions: [],
+          matchesWithoutPrediction: [],
+        })
+      }
       return NextResponse.json({
         success: true,
         message: 'No hay partidos en la fase especificada',
@@ -159,6 +167,10 @@ export async function GET(request: NextRequest) {
         totalPredictions: 0,
         phases: [],
       })
+    }
+
+    if (userIdParam) {
+      predictionsQuery = predictionsQuery.eq('user_id', userIdParam)
     }
 
     const { data: predictions, error: predictionsError } = await predictionsQuery
@@ -195,6 +207,59 @@ export async function GET(request: NextRequest) {
       }
       predictionsByPhase.get(fase)?.push(pred)
     })
+
+    // Modo JSON: devolver predicciones + partidos sin predicción (solo lectura, sin export)
+    if (formatJson && userIdParam) {
+      type MatchRow = { id: string; fase: string; fecha_hora: string; estadio: string | null; estado: string; equipo_local: { nombre: string; codigo: string } | { nombre: string; codigo: string }[]; equipo_visitante: { nombre: string; codigo: string } | { nombre: string; codigo: string }[] }
+      let matchesQuery = supabase
+        .from('matches')
+        .select(`
+          id,
+          fase,
+          fecha_hora,
+          estadio,
+          estado,
+          equipo_local:equipo_local_id (nombre, codigo),
+          equipo_visitante:equipo_visitante_id (nombre, codigo)
+        `)
+        .order('fecha_hora', { ascending: true })
+      if (matchIds && matchIds.length > 0) {
+        matchesQuery = matchesQuery.in('id', matchIds)
+      }
+      const { data: matchesData } = await matchesQuery
+      const allMatches = (matchesData || []) as unknown as MatchRow[]
+      const predictedMatchIds = new Set(typedPredictions.map(p => p.match_id))
+      const normalizedMatch = (m: MatchRow) => {
+        const loc = Array.isArray(m.equipo_local) ? m.equipo_local[0] : m.equipo_local
+        const vis = Array.isArray(m.equipo_visitante) ? m.equipo_visitante[0] : m.equipo_visitante
+        return {
+          id: m.id,
+          fase: m.fase,
+          fecha_hora: m.fecha_hora,
+          estadio: m.estadio,
+          estado: m.estado,
+          equipo_local: loc ?? null,
+          equipo_visitante: vis ?? null,
+        }
+      }
+      const matchesWithoutPrediction = allMatches
+        .filter(m => !predictedMatchIds.has(m.id))
+        .map(normalizedMatch)
+      return NextResponse.json({
+        success: true,
+        predictions: typedPredictions.map(p => ({
+          id: p.id,
+          match_id: p.match_id,
+          goles_local: p.goles_local,
+          goles_visitante: p.goles_visitante,
+          puntos_obtenidos: p.puntos_obtenidos,
+          es_exacto: p.es_exacto,
+          creado_en: p.creado_en,
+          match: p.match,
+        })),
+        matchesWithoutPrediction,
+      })
+    }
 
     // Exportar cada fase a una hoja separada
     const exportedSheets: string[] = []

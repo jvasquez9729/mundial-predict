@@ -35,6 +35,7 @@ const EXEMPT_PATHS = [
   '/api/auth/validate-token',
   '/api/cron/', // Rutas de cron (usan su propio auth)
   '/api/health',
+  '/api/admin/', // Protegidas por requireAdmin + sesión; CSRF eximido para evitar bloqueos en admin.
 ]
 
 // --- Tipos ---
@@ -71,10 +72,14 @@ export async function setCsrfCookie(token?: string): Promise<string> {
   const csrfToken = token || generateCsrfToken()
   const cookieStore = await cookies()
 
+  // secure solo en producción HTTPS (Vercel). En localhost (HTTP) debe ser false.
+  const secure = process.env.VERCEL === '1'
+  // sameSite 'strict' en producción; 'lax' en local para evitar que el navegador no envíe la cookie en ciertos flujos.
+  const sameSite = secure ? ('strict' as const) : ('lax' as const)
   cookieStore.set(CSRF_COOKIE_NAME, csrfToken, {
     httpOnly: false, // El cliente necesita leer este valor
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict', // Más restrictivo para CSRF
+    secure,
+    sameSite,
     maxAge: 60 * 60 * 24 * 7, // 7 días (igual que la sesión)
     path: '/',
   })

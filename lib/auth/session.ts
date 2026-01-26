@@ -32,9 +32,11 @@ export async function createSession(payload: SessionPayload): Promise<string> {
     .sign(getJwtSecretEncoded())
 
   const cookieStore = await cookies()
+  // secure solo en producción HTTPS (Vercel). En localhost (HTTP) debe ser false.
+  const secure = process.env.VERCEL === '1'
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    secure,
     sameSite: 'lax',
     maxAge: SESSION_DURATION,
     path: '/',

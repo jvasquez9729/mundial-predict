@@ -7,6 +7,9 @@ import { handleApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
 import { rateLimitByIP } from '@/lib/utils/rate-limit'
 
+/** Inicio oficial del Mundial 2026. Las predicciones cierran 1 día antes. */
+const WORLD_CUP_START = new Date('2026-06-11T00:00:00.000Z')
+
 // GET - Obtener predicciones del usuario
 export async function GET(request: NextRequest) {
   try {
@@ -107,7 +110,7 @@ export async function POST(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for') ||
                request.headers.get('x-real-ip') ||
                'unknown'
-    const rateLimitResult = rateLimitByIP(ip, 'standard')
+    const rateLimitResult = await rateLimitByIP(ip, 'standard')
 
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -160,14 +163,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Verificar que faltan al menos 1 hora para el partido
-    const matchDate = new Date(match.fecha_hora)
+    // Cerrar todas las predicciones 1 día antes del inicio del Mundial
     const now = new Date()
-    const hoursUntilMatch = (matchDate.getTime() - now.getTime()) / (1000 * 60 * 60)
+    const oneDayBeforeStart = new Date(WORLD_CUP_START)
+    oneDayBeforeStart.setUTCDate(oneDayBeforeStart.getUTCDate() - 1)
 
-    if (hoursUntilMatch < 1) {
+    if (now >= oneDayBeforeStart) {
       return NextResponse.json(
-        { success: false, error: 'Las predicciones cierran 1 hora antes del partido' },
+        { success: false, error: 'Las predicciones cerraron 1 día antes del inicio del Mundial' },
         { status: 400 }
       )
     }
@@ -207,6 +210,107 @@ export async function POST(request: NextRequest) {
       message: 'Predicción guardada exitosamente',
     })
 
+  } catch (error) {
+    return handleApiError('/api/predictions', error)
+  }
+}
+
+// DELETE - Eliminar predicción del usuario
+export async function DELETE(request: NextRequest) {
+  try {
+    const csrfResult = await validateCsrfToken(request)
+    if (!csrfResult.valid) {
+      return csrfErrorResponse(csrfResult.error!)
+    }
+
+    const session = await getSession()
+    if (!session) {
+      return NextResponse.json(
+        { success: false, error: 'No autenticado' },
+        { status: 401 }
+      )
+    }
+
+    const ip = request.headers.get('x-forwarded-for') ||
+               request.headers.get('x-real-ip') ||
+               'unknown'
+    const rateLimitResult = await rateLimitByIP(ip, 'standard')
+    if (!rateLimitResult.allowed) {
+      return NextResponse.json(
+        { success: false, error: 'Demasiadas solicitudes. Intenta más tarde.' },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': rateLimitResult.retryAfter.toString(),
+            'X-RateLimit-Limit': '60',
+            'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+          }
+        }
+      )
+    }
+
+    const { searchParams } = new URL(request.url)
+    const matchId = searchParams.get('match_id')
+    if (!matchId || !/^[0-9a-f-]{36}$/i.test(matchId)) {
+      return NextResponse.json(
+        { success: false, error: 'match_id inválido o faltante' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createServiceClient()
+
+    const { data: prediction, error: fetchError } = await supabase
+      .from('predictions')
+      .select('id')
+      .eq('user_id', session.userId)
+      .eq('match_id', matchId)
+      .maybeSingle()
+
+    if (fetchError) {
+      logApiError('/api/predictions DELETE', fetchError, { userId: session.userId, matchId })
+      return NextResponse.json(
+        { success: false, error: 'Error al verificar predicción' },
+        { status: 500 }
+      )
+    }
+
+    if (!prediction) {
+      return NextResponse.json(
+        { success: false, error: 'Predicción no encontrada o no pertenece al usuario' },
+        { status: 404 }
+      )
+    }
+
+    const now = new Date()
+    const oneDayBeforeStart = new Date(WORLD_CUP_START)
+    oneDayBeforeStart.setUTCDate(oneDayBeforeStart.getUTCDate() - 1)
+
+    if (now >= oneDayBeforeStart) {
+      return NextResponse.json(
+        { success: false, error: 'Las predicciones cerraron 1 día antes del inicio del Mundial' },
+        { status: 400 }
+      )
+    }
+
+    const { error: deleteError } = await supabase
+      .from('predictions')
+      .delete()
+      .eq('user_id', session.userId)
+      .eq('match_id', matchId)
+
+    if (deleteError) {
+      logApiError('/api/predictions DELETE', deleteError, { userId: session.userId, matchId })
+      return NextResponse.json(
+        { success: false, error: 'Error al eliminar predicción' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'Predicción eliminada correctamente',
+    })
   } catch (error) {
     return handleApiError('/api/predictions', error)
   }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, useMemo, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,27 +25,32 @@ import {
   Users,
   ArrowLeft,
   Send,
+  Trash2,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-// Tipo simplificado para el usuario (solo campos necesarios)
+
 interface SimpleUser {
   id: string;
   email: string | null;
 }
 
+interface TeamRef {
+  id: string;
+  nombre: string;
+  codigo: string;
+  bandera_url?: string | null;
+}
+
 interface Match {
   id: string;
-  home_team: string;
-  away_team: string;
-  home_flag: string;
-  away_flag: string;
-  match_date: string;
-  stage: string;
-  stadium: string;
-  home_score: number | null;
-  away_score: number | null;
-  status: string;
+  equipo_local: TeamRef;
+  equipo_visitante: TeamRef;
+  fecha_hora: string;
+  fase: string;
+  estadio: string | null;
+  estado: string;
+  predicciones_cerradas?: boolean;
 }
 
 interface Profile {
@@ -61,8 +66,8 @@ interface Profile {
 interface Prediction {
   id: string;
   match_id: string;
-  home_score: number;
-  away_score: number;
+  goles_local: number;
+  goles_visitante: number;
 }
 
 interface PredictionsPanelProps {
@@ -70,6 +75,15 @@ interface PredictionsPanelProps {
   profile: Profile | null;
   matches: Match[];
   existingPredictions: Prediction[];
+}
+
+/** Misma regla que la API: predicciones cierran 1 día antes del inicio del Mundial. */
+const WORLD_CUP_START = new Date("2026-06-11T00:00:00.000Z");
+function predictionsClosed(): boolean {
+  const now = new Date();
+  const one = new Date(WORLD_CUP_START);
+  one.setUTCDate(one.getUTCDate() - 1);
+  return now >= one;
 }
 
 export function PredictionsPanel({
@@ -84,8 +98,8 @@ export function PredictionsPanel({
     const initial: Record<string, { home: string; away: string }> = {};
     existingPredictions.forEach((p) => {
       initial[p.match_id] = {
-        home: p.home_score.toString(),
-        away: p.away_score.toString(),
+        home: String(p.goles_local),
+        away: String(p.goles_visitante),
       };
     });
     return initial;
@@ -93,38 +107,61 @@ export function PredictionsPanel({
   const [submitting, setSubmitting] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [deletedMatchIds, setDeletedMatchIds] = useState<Set<string>>(new Set());
   const [currentMatchIndex, setCurrentMatchIndex] = useState(0);
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
   const supabase = createClient();
+  const closed = useMemo(() => predictionsClosed(), []);
 
-  const handleLogout = async () => {
+  const pendingMatches = useMemo(
+    () => matches.filter((m) => m.estado === "proximo"),
+    [matches]
+  );
+  const currentMatch = useMemo(
+    () => pendingMatches[currentMatchIndex] ?? null,
+    [pendingMatches, currentMatchIndex]
+  );
+  const predictionCount = useMemo(
+    () => Math.max(0, existingPredictions.length - deletedMatchIds.size),
+    [existingPredictions.length, deletedMatchIds.size]
+  );
+
+  const handleLogout = useCallback(async () => {
     await supabase.auth.signOut();
-    await fetch('/api/auth/logout', { method: 'POST', headers: getCsrfHeaders() });
+    await fetch("/api/auth/logout", {
+      method: "POST",
+      headers: getCsrfHeaders(),
+      credentials: "include",
+    });
     router.push("/");
     router.refresh();
-  };
+  }, [router, supabase]);
 
-  const handlePredictionChange = (
-    matchId: string,
-    team: "home" | "away",
-    value: string
-  ) => {
-    if (value === "" || /^\d+$/.test(value)) {
-      setPredictions((prev) => ({
-        ...prev,
-        [matchId]: {
-          ...prev[matchId],
-          [team]: value,
-        },
-      }));
-    }
-  };
+  const handlePredictionChange = useCallback(
+    (matchId: string, team: "home" | "away", value: string) => {
+      if (value === "" || /^\d+$/.test(value)) {
+        setPredictions((prev) => ({
+          ...prev,
+          [matchId]: { ...prev[matchId], [team]: value },
+        }));
+      }
+    },
+    []
+  );
 
-  const submitPrediction = async (matchId: string) => {
+  const submitPrediction = useCallback(async (matchId: string) => {
     const pred = predictions[matchId];
     if (!pred || pred.home === "" || pred.away === "") {
       setError("Ingresa ambos marcadores");
+      return;
+    }
+
+    const goles_local = parseInt(pred.home, 10);
+    const goles_visitante = parseInt(pred.away, 10);
+    if (Number.isNaN(goles_local) || Number.isNaN(goles_visitante)) {
+      setError("Ingresa números válidos");
       return;
     }
 
@@ -132,72 +169,92 @@ export function PredictionsPanel({
     setError(null);
     setSuccess(null);
 
-    const existingPrediction = existingPredictions.find(
-      (p) => p.match_id === matchId
-    );
-
-    if (existingPrediction) {
-      const { error: updateError } = await supabase
-        .from("predictions")
-        .update({
-          home_score: parseInt(pred.home),
-          away_score: parseInt(pred.away),
-        })
-        .eq("id", existingPrediction.id);
-
-      if (updateError) {
-        setError(updateError.message);
-      } else {
-        setSuccess(matchId);
-        startTransition(() => {
-          router.refresh();
-        });
-      }
-    } else {
-      const { error: insertError } = await supabase.from("predictions").insert({
-        user_id: user.id,
+    const res = await fetch("/api/predictions", {
+      method: "POST",
+      headers: getCsrfHeaders(),
+      body: JSON.stringify({
         match_id: matchId,
-        home_score: parseInt(pred.home),
-        away_score: parseInt(pred.away),
-      });
-
-      if (insertError) {
-        setError(insertError.message);
-      } else {
-        setSuccess(matchId);
-        startTransition(() => {
-          router.refresh();
-        });
-      }
-    }
+        goles_local,
+        goles_visitante,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
 
     setSubmitting(null);
-    setTimeout(() => setSuccess(null), 3000);
-  };
 
-  const formatDate = (dateStr: string) => {
+    if (!res.ok || !data.success) {
+      setError(data.error || "Error al guardar predicción");
+      return;
+    }
+
+    setSuccess(matchId);
+    startTransition(() => router.refresh());
+    setTimeout(() => setSuccess(null), 3000);
+  }, [predictions, startTransition, router]);
+
+  const deletePrediction = useCallback(async (matchId: string) => {
+    if (closed) return;
+    setDeleting(matchId);
+    setError(null);
+
+    const res = await fetch(`/api/predictions?match_id=${encodeURIComponent(matchId)}`, {
+      method: "DELETE",
+      headers: getCsrfHeaders(),
+      credentials: "include",
+    });
+    const data = await res.json().catch(() => ({}));
+
+    setDeleting(null);
+
+    if (!res.ok || !data.success) {
+      setError(data.error || "Error al eliminar predicción");
+      return;
+    }
+
+    setPredictions((prev) => {
+      const next = { ...prev };
+      delete next[matchId];
+      return next;
+    });
+    setDeletedMatchIds((prev) => new Set(prev).add(matchId));
+    startTransition(() => router.refresh());
+  }, [closed, startTransition]);
+
+  const formatDate = useCallback((dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleDateString("es-ES", {
       weekday: "short",
       day: "numeric",
       month: "short",
     });
-  };
+  }, []);
 
-  const formatTime = (dateStr: string) => {
+  const formatTime = useCallback((dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleTimeString("es-ES", {
       hour: "2-digit",
       minute: "2-digit",
     });
-  };
+  }, []);
 
-  const pendingMatches = matches.filter((m) => m.status === "scheduled");
-  const currentMatch = pendingMatches[currentMatchIndex];
+  const hasPrediction = useCallback(
+    (matchId: string) =>
+      existingPredictions.some((p) => p.match_id === matchId) &&
+      !deletedMatchIds.has(matchId),
+    [existingPredictions, deletedMatchIds]
+  );
 
-  const hasPrediction = (matchId: string) => {
-    return existingPredictions.some((p) => p.match_id === matchId);
-  };
+  const onPrevMatch = useCallback(
+    () => setCurrentMatchIndex((p) => Math.max(0, p - 1)),
+    []
+  );
+  const onNextMatch = useCallback(
+    () =>
+      setCurrentMatchIndex((p) =>
+        Math.min(Math.max(0, pendingMatches.length - 1), p + 1)
+      ),
+    [pendingMatches.length]
+  );
 
   return (
     <div className="min-h-screen bg-background">
@@ -252,7 +309,7 @@ export function PredictionsPanel({
                 <Trophy className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{existingPredictions.length}</p>
+                <p className="text-2xl font-bold">{predictionCount}</p>
                 <p className="text-xs text-muted-foreground">Predicciones</p>
               </div>
             </CardContent>
@@ -292,7 +349,7 @@ export function PredictionsPanel({
                 <Flame className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-2xl font-bold">{existingPredictions.length}</p>
+                <p className="text-2xl font-bold">{predictionCount}</p>
                 <p className="text-xs text-muted-foreground">Predicciones</p>
               </div>
             </CardContent>
@@ -326,21 +383,21 @@ export function PredictionsPanel({
                       variant="outline"
                       className="border-primary/50 text-primary"
                     >
-                      {currentMatch.stage}
+                      {currentMatch.fase}
                     </Badge>
                   </div>
                   <CardDescription className="flex items-center justify-center gap-4 text-sm">
                     <span className="flex items-center gap-1">
                       <Calendar className="h-3.5 w-3.5" />
-                      {formatDate(currentMatch.match_date)}
+                      {formatDate(currentMatch.fecha_hora)}
                     </span>
                     <span className="flex items-center gap-1">
                       <Clock className="h-3.5 w-3.5" />
-                      {formatTime(currentMatch.match_date)}
+                      {formatTime(currentMatch.fecha_hora)}
                     </span>
                   </CardDescription>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {currentMatch.stadium}
+                    {currentMatch.estadio ?? "—"}
                   </p>
                 </CardHeader>
 
@@ -361,13 +418,23 @@ export function PredictionsPanel({
                   )}
 
                   <div className="flex items-center justify-center gap-4 md:gap-8">
-                    {/* Home Team */}
+                    {/* Local */}
                     <div className="flex-1 text-center">
                       <div className="text-4xl md:text-6xl mb-2">
-                        {currentMatch.home_flag}
+                        {currentMatch.equipo_local?.bandera_url ? (
+                          <img
+                            src={currentMatch.equipo_local.bandera_url}
+                            alt=""
+                            className="w-12 h-12 md:w-16 md:h-16 mx-auto object-contain"
+                          />
+                        ) : (
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {currentMatch.equipo_local?.codigo ?? "—"}
+                          </span>
+                        )}
                       </div>
                       <p className="font-semibold text-sm md:text-base">
-                        {currentMatch.home_team}
+                        {currentMatch.equipo_local?.nombre ?? "—"}
                       </p>
                       <Input
                         type="text"
@@ -383,7 +450,7 @@ export function PredictionsPanel({
                         }
                         className="w-16 h-16 text-center text-2xl font-bold mx-auto mt-3 bg-input border-border"
                         placeholder="-"
-                        aria-label={`Goles de ${currentMatch.home_team}`}
+                        aria-label={`Goles de ${currentMatch.equipo_local?.nombre ?? "local"}`}
                       />
                     </div>
 
@@ -400,13 +467,23 @@ export function PredictionsPanel({
                       )}
                     </div>
 
-                    {/* Away Team */}
+                    {/* Visitante */}
                     <div className="flex-1 text-center">
                       <div className="text-4xl md:text-6xl mb-2">
-                        {currentMatch.away_flag}
+                        {currentMatch.equipo_visitante?.bandera_url ? (
+                          <img
+                            src={currentMatch.equipo_visitante.bandera_url}
+                            alt=""
+                            className="w-12 h-12 md:w-16 md:h-16 mx-auto object-contain"
+                          />
+                        ) : (
+                          <span className="text-2xl font-bold text-muted-foreground">
+                            {currentMatch.equipo_visitante?.codigo ?? "—"}
+                          </span>
+                        )}
                       </div>
                       <p className="font-semibold text-sm md:text-base">
-                        {currentMatch.away_team}
+                        {currentMatch.equipo_visitante?.nombre ?? "—"}
                       </p>
                       <Input
                         type="text"
@@ -422,43 +499,59 @@ export function PredictionsPanel({
                         }
                         className="w-16 h-16 text-center text-2xl font-bold mx-auto mt-3 bg-input border-border"
                         placeholder="-"
-                        aria-label={`Goles de ${currentMatch.away_team}`}
+                        aria-label={`Goles de ${currentMatch.equipo_visitante?.nombre ?? "visitante"}`}
                       />
                     </div>
                   </div>
 
-                  <Button
-                    onClick={() => submitPrediction(currentMatch.id)}
-                    disabled={
-                      submitting === currentMatch.id ||
-                      !predictions[currentMatch.id]?.home ||
-                      !predictions[currentMatch.id]?.away
-                    }
-                    className="w-full mt-6 bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-base"
-                  >
-                    {submitting === currentMatch.id ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Guardando...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="mr-2 h-4 w-4" />
-                        {hasPrediction(currentMatch.id)
-                          ? "Actualizar prediccion"
-                          : "Guardar prediccion"}
-                      </>
+                  <div className="mt-6 flex flex-col gap-3">
+                    <Button
+                      onClick={() => submitPrediction(currentMatch.id)}
+                      disabled={
+                        submitting === currentMatch.id ||
+                        !predictions[currentMatch.id]?.home ||
+                        !predictions[currentMatch.id]?.away
+                      }
+                      className="w-full bg-primary hover:bg-primary/90 text-primary-foreground h-12 text-base"
+                    >
+                      {submitting === currentMatch.id ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Guardando...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="mr-2 h-4 w-4" />
+                          {hasPrediction(currentMatch.id)
+                            ? "Actualizar prediccion"
+                            : "Guardar prediccion"}
+                        </>
+                      )}
+                    </Button>
+                    {hasPrediction(currentMatch.id) && !closed && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => deletePrediction(currentMatch.id)}
+                        disabled={deleting === currentMatch.id}
+                        className="w-full border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      >
+                        {deleting === currentMatch.id ? (
+                          <Loader2 className="mr-2 h-3 w-3 animate-spin" />
+                        ) : (
+                          <Trash2 className="mr-2 h-3 w-3" />
+                        )}
+                        Eliminar prediccion
+                      </Button>
                     )}
-                  </Button>
+                  </div>
 
                   {/* Navigation */}
                   <div className="flex items-center justify-between mt-6 pt-4 border-t border-border/30">
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        setCurrentMatchIndex((prev) => Math.max(0, prev - 1))
-                      }
+                      onClick={onPrevMatch}
                       disabled={currentMatchIndex === 0}
                       className="text-muted-foreground"
                     >
@@ -473,11 +566,7 @@ export function PredictionsPanel({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() =>
-                        setCurrentMatchIndex((prev) =>
-                          Math.min(pendingMatches.length - 1, prev + 1)
-                        )
-                      }
+                      onClick={onNextMatch}
                       disabled={currentMatchIndex === pendingMatches.length - 1}
                       className="text-muted-foreground"
                     >
@@ -504,6 +593,11 @@ export function PredictionsPanel({
 
           {/* All Matches Tab */}
           <TabsContent value="todos" className="space-y-4">
+            {error && (
+              <Alert variant="destructive">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
             {pendingMatches.length > 0 ? (
               <div className="grid gap-4">
                 {pendingMatches.map((match) => (
@@ -517,22 +611,32 @@ export function PredictionsPanel({
                           variant="outline"
                           className="text-xs border-border"
                         >
-                          {match.stage}
+                          {match.fase}
                         </Badge>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
                           <Calendar className="h-3 w-3" />
-                          {formatDate(match.match_date)}
+                          {formatDate(match.fecha_hora)}
                           <Clock className="h-3 w-3 ml-2" />
-                          {formatTime(match.match_date)}
+                          {formatTime(match.fecha_hora)}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
-                        {/* Home */}
+                        {/* Local */}
                         <div className="flex-1 flex items-center gap-2">
-                          <span className="text-2xl">{match.home_flag}</span>
+                          {match.equipo_local?.bandera_url ? (
+                            <img
+                              src={match.equipo_local.bandera_url}
+                              alt=""
+                              className="w-6 h-6 object-contain"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {match.equipo_local?.codigo ?? "—"}
+                            </span>
+                          )}
                           <span className="font-medium text-sm truncate">
-                            {match.home_team}
+                            {match.equipo_local?.nombre ?? "—"}
                           </span>
                         </div>
 
@@ -552,7 +656,7 @@ export function PredictionsPanel({
                             }
                             className="w-12 h-10 text-center font-bold bg-input border-border"
                             placeholder="-"
-                            aria-label={`Goles de ${match.home_team}`}
+                            aria-label={`Goles de ${match.equipo_local?.nombre ?? "local"}`}
                           />
                           <span className="text-muted-foreground font-medium">
                             -
@@ -571,22 +675,32 @@ export function PredictionsPanel({
                             }
                             className="w-12 h-10 text-center font-bold bg-input border-border"
                             placeholder="-"
-                            aria-label={`Goles de ${match.away_team}`}
+                            aria-label={`Goles de ${match.equipo_visitante?.nombre ?? "visitante"}`}
                           />
                         </div>
 
-                        {/* Away */}
+                        {/* Visitante */}
                         <div className="flex-1 flex items-center justify-end gap-2">
                           <span className="font-medium text-sm truncate">
-                            {match.away_team}
+                            {match.equipo_visitante?.nombre ?? "—"}
                           </span>
-                          <span className="text-2xl">{match.away_flag}</span>
+                          {match.equipo_visitante?.bandera_url ? (
+                            <img
+                              src={match.equipo_visitante.bandera_url}
+                              alt=""
+                              className="w-6 h-6 object-contain"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-muted-foreground">
+                              {match.equipo_visitante?.codigo ?? "—"}
+                            </span>
+                          )}
                         </div>
                       </div>
 
                       <div className="flex items-center justify-between mt-3 pt-3 border-t border-border/30">
                         <span className="text-xs text-muted-foreground">
-                          {match.stadium}
+                          {match.estadio ?? "—"}
                         </span>
                         <div className="flex items-center gap-2">
                           {hasPrediction(match.id) && (
@@ -594,6 +708,22 @@ export function PredictionsPanel({
                               <CheckCircle className="h-3 w-3 mr-1" />
                               Guardado
                             </Badge>
+                          )}
+                          {hasPrediction(match.id) && !closed && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => deletePrediction(match.id)}
+                              disabled={deleting === match.id}
+                              className="h-8 border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive px-2"
+                              aria-label="Eliminar predicción"
+                            >
+                              {deleting === match.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-3 w-3" />
+                              )}
+                            </Button>
                           )}
                           <Button
                             size="sm"
@@ -652,9 +782,8 @@ export function PredictionsPanel({
               <div>
                 <p className="font-medium text-sm">Consejo del dia</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Recuerda que puedes actualizar tus predicciones hasta 1 hora
-                  antes de que comience el partido. Los resultados exactos otorgan
-                  +25 puntos y acertar el ganador +10 puntos.
+                  Las predicciones cierran 1 día antes del inicio del Mundial.
+                  Recuerda hacer tus predicciones a tiempo.
                 </p>
               </div>
             </div>

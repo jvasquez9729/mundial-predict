@@ -24,25 +24,29 @@ export default async function PrediccionesPage() {
     redirect("/login");
   }
 
-  // Fetch upcoming matches
+  // Fetch upcoming matches (estado proximo; esquema real: equipo_local, equipo_visitante, fecha_hora, fase, estadio)
   const { data: matches } = await supabase
     .from("matches")
     .select(`
-      *,
-      equipo_local:equipo_local_id(id, nombre, codigo),
-      equipo_visitante:equipo_visitante_id(id, nombre, codigo)
+      id,
+      fase,
+      fecha_hora,
+      estadio,
+      estado,
+      predicciones_cerradas,
+      equipo_local:equipo_local_id(id, nombre, codigo, bandera_url),
+      equipo_visitante:equipo_visitante_id(id, nombre, codigo, bandera_url)
     `)
     .gte("fecha_hora", new Date().toISOString())
     .eq("estado", "proximo")
     .order("fecha_hora", { ascending: true });
 
-  // Fetch user predictions
+  // Fetch user predictions (goles_local, goles_visitante para inicializar panel)
   const { data: predictions } = await supabase
     .from("predictions")
-    .select("*")
+    .select("id, match_id, goles_local, goles_visitante")
     .eq("user_id", session.userId);
 
-  // Crear objeto user compatible con PredictionsPanel
   const user = {
     id: userProfile.id,
     email: userProfile.email,
@@ -50,11 +54,18 @@ export default async function PrediccionesPage() {
     es_admin: userProfile.es_admin,
   };
 
+  // Normalizar: Supabase a veces devuelve equipo_local/equipo_visitante como array
+  const normalizedMatches = (matches || []).map((m) => ({
+    ...m,
+    equipo_local: Array.isArray(m.equipo_local) ? m.equipo_local[0] : m.equipo_local,
+    equipo_visitante: Array.isArray(m.equipo_visitante) ? m.equipo_visitante[0] : m.equipo_visitante,
+  }));
+
   return (
     <PredictionsPanel 
       user={user} 
       profile={userProfile} 
-      matches={matches || []} 
+      matches={normalizedMatches} 
       existingPredictions={predictions || []}
     />
   );

@@ -22,8 +22,11 @@ const envSchema = z.object({
   // Resend (opcional)
   RESEND_API_KEY: z.string().optional(),
 
-  // Google Sheets (opcional)
-  GOOGLE_SERVICE_ACCOUNT_EMAIL: z.string().email().optional(),
+  // Google Sheets (opcional) - vacío o ausente = no usado
+  GOOGLE_SERVICE_ACCOUNT_EMAIL: z.preprocess(
+    (val) => (val === '' || val === undefined ? undefined : val),
+    z.string().email().optional()
+  ),
   GOOGLE_PRIVATE_KEY: z.string().optional(),
   GOOGLE_SHEET_ID: z.string().optional(),
 

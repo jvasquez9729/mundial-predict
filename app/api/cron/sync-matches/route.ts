@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { handleApiError } from '@/lib/utils/api-error'
+import { logger } from '@/lib/utils/logger'
 
 // Football-Data.org API types
 interface FootballDataMatch {
@@ -132,7 +134,7 @@ export async function GET(request: NextRequest) {
         .single()
 
       if (!homeTeam || !awayTeam) {
-        console.log(`Teams not found: ${homeTeamCode} vs ${awayTeamCode}`)
+        logger.warn('Teams not found during sync', { homeTeamCode, awayTeamCode })
         continue
       }
 
@@ -200,10 +202,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Sync matches error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error al sincronizar partidos' },
-      { status: 500 }
-    )
+    return handleApiError('/api/cron/sync-matches', error)
   }
 }

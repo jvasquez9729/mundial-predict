@@ -4,6 +4,7 @@ import { requireAdmin } from '@/lib/auth/session'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/auth/csrf'
 import { generateLinksSchema } from '@/lib/auth/validation'
 import { handleApiError } from '@/lib/utils/api-error'
+import { logApiError } from '@/lib/utils/logger'
 import { getAppUrl, buildRegistrationUrl } from '@/lib/supabase/helpers'
 import { randomBytes } from 'crypto'
 
@@ -54,7 +55,7 @@ export async function POST(request: NextRequest) {
       .select('id, token, creado_en, expira_en')
 
     if (error) {
-      console.error('Error generating links:', error)
+      logApiError('/api/admin/links/generate', error)
       return NextResponse.json(
         { success: false, error: 'Error al generar links' },
         { status: 500 }

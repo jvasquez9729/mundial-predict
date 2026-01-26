@@ -6,7 +6,11 @@ import { getCsrfHeaders } from '@/lib/api/client'
 
 export function AdminLogoutButton() {
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', headers: getCsrfHeaders() });
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: getCsrfHeaders(),
+      credentials: 'include',
+    });
     window.location.href = '/';
   };
 

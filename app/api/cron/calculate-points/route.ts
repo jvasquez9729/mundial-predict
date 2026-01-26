@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { handleApiError } from '@/lib/utils/api-error'
+import { logger } from '@/lib/utils/logger'
 
 function calculatePoints(
   predLocal: number,
@@ -80,7 +82,10 @@ export async function GET(request: NextRequest) {
         .eq('match_id', match.id)
 
       if (predError || !predictions) {
-        console.error(`Error fetching predictions for match ${match.id}:`, predError)
+        logger.warn('Error fetching predictions for match', { 
+          matchId: match.id, 
+          error: predError 
+        })
         continue
       }
 
@@ -147,10 +152,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Calculate points error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error al calcular puntos' },
-      { status: 500 }
-    )
+    return handleApiError('/api/cron/calculate-points', error)
   }
 }

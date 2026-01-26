@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getSession } from '@/lib/auth/session'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/auth/csrf'
 import { handleApiError } from '@/lib/utils/api-error'
+import { logApiError } from '@/lib/utils/logger'
 import { z } from 'zod'
 
 const specialPredictionSchema = z.object({
@@ -46,7 +47,7 @@ export async function GET() {
 
     if (error && error.code !== 'PGRST116') {
       // PGRST116 = no rows returned, which is okay for new users
-      console.error('Error fetching special prediction:', error)
+      logApiError('/api/predictions/special', error, { userId: session.userId })
       return NextResponse.json(
         { success: false, error: 'Error al obtener predicción especial' },
         { status: 500 }
@@ -236,7 +237,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (error) {
-      console.error('Error saving special prediction:', error)
+      logApiError('/api/predictions/special', error, { userId: session.userId })
       return NextResponse.json(
         { success: false, error: 'Error al guardar predicción especial' },
         { status: 500 }

@@ -57,10 +57,14 @@ function isAdminRoute(pathname: string): boolean {
 
 export async function updateSession(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  // Obtener token de sesión
-  type SessionData = { userId: string; email: string; esAdmin: boolean };
   const token = request.cookies.get(SESSION_COOKIE)?.value;
+
+  // Atajo: /login sin cookie → no hay sesión que comprobar; evita JWT/env
+  if (!token && (pathname === "/login" || pathname === "/forgot-password" || pathname === "/reglas" || pathname === "/")) {
+    return NextResponse.next({ request });
+  }
+
+  type SessionData = { userId: string; email: string; esAdmin: boolean };
   let session: SessionData | null = null;
 
   if (token) {

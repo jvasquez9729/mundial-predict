@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getCurrentUser } from '@/lib/auth/session'
+import { handleApiError } from '@/lib/utils/api-error'
 
 export async function GET() {
   try {
@@ -18,10 +19,6 @@ export async function GET() {
     })
 
   } catch (error) {
-    console.error('Get user error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+    return handleApiError('/api/auth/me', error)
   }
 }

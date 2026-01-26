@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { getSession, requireAdmin } from '@/lib/auth/session'
+import { handleApiError } from '@/lib/utils/api-error'
+import { logApiError } from '@/lib/utils/logger'
 import { z } from 'zod'
 
 interface RouteParams {
@@ -73,11 +75,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     })
 
   } catch (error) {
-    console.error('Get match error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+    return handleApiError('/api/matches/[id]', error)
   }
 }
 
@@ -190,11 +188,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         )
       }
     }
-    console.error('Update match error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error interno del servidor' },
-      { status: 500 }
-    )
+    return handleApiError('/api/matches/[id]', error)
   }
 }
 
@@ -212,7 +206,7 @@ async function calculatePredictionPoints(
     .eq('match_id', matchId)
 
   if (error || !predictions) {
-    console.error('Error fetching predictions for scoring:', error)
+    logApiError('/api/matches/[id]', error, { matchId, operation: 'calculatePredictionPoints' })
     return
   }
 

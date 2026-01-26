@@ -16,7 +16,7 @@ export async function POST(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for') ||
                request.headers.get('x-real-ip') ||
                'unknown'
-    const rateLimitResult = rateLimitAuth(ip)
+    const rateLimitResult = await rateLimitAuth(ip)
 
     if (!rateLimitResult.allowed) {
       log.warn('Rate limit exceeded', { ip, retryAfter: rateLimitResult.retryAfter })

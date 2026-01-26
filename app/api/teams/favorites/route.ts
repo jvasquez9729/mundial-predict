@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
 import { handleApiError } from '@/lib/utils/api-error'
+import { logger } from '@/lib/utils/logger'
 import { env } from '@/lib/config/env'
 
 // Mapeo de códigos de equipos para The Odds API
@@ -47,7 +48,7 @@ function oddsToProbability(decimalOdds: number): number {
 // Función para obtener probabilidades desde The Odds API
 async function fetchFromOddsAPI(): Promise<typeof fallbackOdds | null> {
   if (!env.THE_ODDS_API_KEY) {
-    console.log('THE_ODDS_API_KEY no configurada, usando fallback')
+    logger.debug('THE_ODDS_API_KEY no configurada, usando fallback')
     return null
   }
 
@@ -75,7 +76,10 @@ async function fetchFromOddsAPI(): Promise<typeof fallbackOdds | null> {
         const requestsUsed = response.headers.get('x-requests-used')
         
         if (requestsRemaining) {
-          console.log(`The Odds API: ${requestsRemaining} requests remaining, ${requestsUsed} used`)
+          logger.debug('The Odds API quota', { 
+            remaining: requestsRemaining, 
+            used: requestsUsed 
+          })
         }
 
         if (!response.ok) {
@@ -83,7 +87,11 @@ async function fetchFromOddsAPI(): Promise<typeof fallbackOdds | null> {
             // Sport no válido, intentar siguiente
             continue
           }
-          console.log(`The Odds API error: ${response.status} ${response.statusText}`)
+          logger.warn('The Odds API error', { 
+            status: response.status, 
+            statusText: response.statusText,
+            sport 
+          })
           continue
         }
 
@@ -103,7 +111,7 @@ async function fetchFromOddsAPI(): Promise<typeof fallbackOdds | null> {
 
         if (worldCupEvents.length === 0) {
           // No hay eventos del mundial aún, usar fallback
-          console.log('The Odds API no tiene odds del Mundial 2026 disponibles aún')
+          logger.debug('The Odds API no tiene odds del Mundial 2026 disponibles aún', { sport })
           return null
         }
 
@@ -170,22 +178,24 @@ async function fetchFromOddsAPI(): Promise<typeof fallbackOdds | null> {
           // Tomar solo los top 10
           const top10 = normalized.slice(0, 10)
           
-          console.log(`✅ Obtenidas ${top10.length} probabilidades desde The Odds API`)
-          console.log(`Top 3: ${top10.slice(0, 3).map(t => `${t.nombre} (${t.probabilidad}%)`).join(', ')}`)
+          logger.info('Obtenidas probabilidades desde The Odds API', { 
+            count: top10.length,
+            top3: top10.slice(0, 3).map(t => `${t.nombre} (${t.probabilidad}%)`)
+          })
           
           return top10 as typeof fallbackOdds
         }
       } catch (sportError) {
-        console.log(`Error con sport ${sport}:`, sportError)
+        logger.warn('Error con sport en The Odds API', { sport, error: sportError })
         continue
       }
     }
 
     // Si llegamos aquí, no se encontraron datos
-    console.log('The Odds API no tiene datos del Mundial 2026 disponibles aún')
+    logger.debug('The Odds API no tiene datos del Mundial 2026 disponibles aún')
     return null
   } catch (error) {
-    console.error('Error fetching from The Odds API:', error)
+    logger.error('Error fetching from The Odds API', error as Error)
     return null
   }
 }

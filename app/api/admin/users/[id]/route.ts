@@ -3,12 +3,16 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { requireAdmin } from '@/lib/auth/session'
 import { validateCsrfToken, csrfErrorResponse } from '@/lib/auth/csrf'
 import { hashPassword } from '@/lib/auth/password'
-import { handleApiError } from '@/lib/utils/api-error'
+import { handleApiError, ApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
 import { z } from 'zod'
 
-interface RouteParams {
-  params: Promise<{ id: string }>
+type RouteContext = { params: Promise<{ id: string }> }
+
+function validateUserId(id: unknown): string | null {
+  if (id == null || typeof id !== 'string') return null
+  const t = id.trim()
+  return t.length > 0 ? t : null
 }
 
 // Tipos explícitos para respuestas de Supabase
@@ -58,10 +62,9 @@ const updateUserSchema = z.object({
  */
 export async function PUT(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: RouteContext
 ) {
   try {
-    // Validación CSRF
     const csrfResult = await validateCsrfToken(request)
     if (!csrfResult.valid) {
       return csrfErrorResponse(csrfResult.error!)
@@ -69,10 +72,35 @@ export async function PUT(
 
     await requireAdmin()
 
-    const body = await request.json()
-    const { id } = await params
+    let resolved: { id?: string }
+    try {
+      resolved = await params
+    } catch (e) {
+      logApiError('/api/admin/users/[id]', e, { operation: 'params' })
+      return NextResponse.json(
+        { success: false, error: 'ID inválido' },
+        { status: 400 }
+      )
+    }
+    const userId = validateUserId(resolved?.id)
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'ID inválido' },
+        { status: 400 }
+      )
+    }
 
-    // Validar input
+    let body: unknown
+    try {
+      body = await request.json()
+    } catch (e) {
+      logApiError('/api/admin/users/[id]', e, { operation: 'json', userId })
+      return NextResponse.json(
+        { success: false, error: 'Cuerpo inválido' },
+        { status: 400 }
+      )
+    }
+
     const result = updateUserSchema.safeParse(body)
     if (!result.success) {
       return NextResponse.json(
@@ -84,11 +112,10 @@ export async function PUT(
     const updateData = result.data
     const supabase = createServiceClient()
 
-    // Verificar que el usuario existe y obtener todos los campos necesarios
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
       .select('id, email, cedula, celular, es_admin')
-      .eq('id', id)
+      .eq('id', userId)
       .single()
 
     if (fetchError || !existingUser) {
@@ -98,23 +125,18 @@ export async function PUT(
       )
     }
 
-    // Tipo explícito definido arriba
     const user: ExistingUser = existingUser as ExistingUser
 
-    // No permitir quitar admin a un usuario si es el único admin
     if (updateData.es_admin === false && user.es_admin === true) {
       const { data: adminUsers, error: adminError } = await supabase
         .from('users')
         .select('id')
         .eq('es_admin', true)
-        .neq('id', id)
+        .neq('id', userId)
 
       if (adminError) {
-        logApiError('/api/admin/users/[id]', adminError, { userId: id })
-        return NextResponse.json(
-          { success: false, error: 'Error al verificar administradores' },
-          { status: 500 }
-        )
+        logApiError('/api/admin/users/[id]', adminError, { userId })
+        throw new ApiError(500, 'Error al verificar administradores')
       }
 
       // Tipo explícito definido arriba
@@ -133,7 +155,7 @@ export async function PUT(
         .from('users')
         .select('id')
         .eq('email', updateData.email.toLowerCase())
-        .neq('id', id)
+        .neq('id', userId)
         .maybeSingle()
 
       if (existingByEmail) {
@@ -152,7 +174,7 @@ export async function PUT(
         .from('users')
         .select('id')
         .eq('cedula', updateData.cedula)
-        .neq('id', id)
+        .neq('id', userId)
         .maybeSingle()
 
       if (existingByCedula) {
@@ -171,7 +193,7 @@ export async function PUT(
         .from('users')
         .select('id')
         .eq('celular', updateData.celular)
-        .neq('id', id)
+        .neq('id', userId)
         .maybeSingle()
 
       if (existingByCelular) {
@@ -207,20 +229,23 @@ export async function PUT(
       updates.es_admin = updateData.es_admin
     }
 
-    // Actualizar usuario
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'No hay datos para actualizar' },
+        { status: 400 }
+      )
+    }
+
     const { data: updatedUser, error: updateError } = await supabase
       .from('users')
       .update(updates)
-      .eq('id', id)
+      .eq('id', userId)
       .select('id, nombre_completo, email, cedula, celular, es_admin, creado_en')
       .single()
 
     if (updateError) {
-      logApiError('/api/admin/users/[id]', updateError, { userId: id })
-      return NextResponse.json(
-        { success: false, error: 'Error al actualizar usuario' },
-        { status: 500 }
-      )
+      logApiError('/api/admin/users/[id]', updateError, { userId })
+      throw new ApiError(500, 'Error al actualizar usuario')
     }
 
     // Tipo explícito definido arriba
@@ -233,7 +258,24 @@ export async function PUT(
     })
 
   } catch (error) {
-    return handleApiError('/api/admin/users/[id]', error)
+    logApiError('/api/admin/users/[id]', error, { operation: 'PUT' })
+    const res = handleApiError('/api/admin/users/[id]', error)
+    if (
+      process.env.NODE_ENV === 'development' &&
+      error instanceof Error &&
+      res.status === 500
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Error interno del servidor',
+          debug: error.message,
+          name: error.name,
+        },
+        { status: 500 }
+      )
+    }
+    return res
   }
 }
 
@@ -242,10 +284,9 @@ export async function PUT(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: RouteParams
+  { params }: RouteContext
 ) {
   try {
-    // Validación CSRF
     const csrfResult = await validateCsrfToken(request)
     if (!csrfResult.valid) {
       return csrfErrorResponse(csrfResult.error!)
@@ -253,14 +294,30 @@ export async function DELETE(
 
     await requireAdmin()
 
-    const { id } = await params
+    let resolved: { id?: string }
+    try {
+      resolved = await params
+    } catch (e) {
+      logApiError('/api/admin/users/[id]', e, { operation: 'params' })
+      return NextResponse.json(
+        { success: false, error: 'ID inválido' },
+        { status: 400 }
+      )
+    }
+    const userId = validateUserId(resolved?.id)
+    if (!userId) {
+      return NextResponse.json(
+        { success: false, error: 'ID inválido' },
+        { status: 400 }
+      )
+    }
+
     const supabase = createServiceClient()
 
-    // Verificar que el usuario existe
     const { data: existingUser, error: fetchError } = await supabase
       .from('users')
       .select('id, es_admin')
-      .eq('id', id)
+      .eq('id', userId)
       .single()
 
     if (fetchError || !existingUser) {
@@ -270,10 +327,8 @@ export async function DELETE(
       )
     }
 
-    // Tipo explícito definido arriba
     const user: UserForDelete = existingUser as UserForDelete
 
-    // No permitir eliminar el último administrador
     if (user.es_admin === true) {
       const { data: adminUsers, error: adminError } = await supabase
         .from('users')
@@ -281,14 +336,10 @@ export async function DELETE(
         .eq('es_admin', true)
 
       if (adminError) {
-        logApiError('/api/admin/users/[id]', adminError, { userId: id })
-        return NextResponse.json(
-          { success: false, error: 'Error al verificar administradores' },
-          { status: 500 }
-        )
+        logApiError('/api/admin/users/[id]', adminError, { userId })
+        throw new ApiError(500, 'Error al verificar administradores')
       }
 
-      // Tipo explícito definido arriba
       const admins: AdminUser[] = (adminUsers || []) as AdminUser[]
       if (admins.length <= 1) {
         return NextResponse.json(
@@ -298,26 +349,50 @@ export async function DELETE(
       }
     }
 
-    // Eliminar usuario
+    // registration_links.usado_por REFERENCES users(id) sin ON DELETE → rompe el DELETE.
+    // Desvincular primero para que el delete no falle por FK.
+    const { error: unlinkError } = await supabase
+      .from('registration_links')
+      .update({ usado_por: null })
+      .eq('usado_por', userId)
+
+    if (unlinkError) {
+      logApiError('/api/admin/users/[id]', unlinkError, { userId })
+      throw new ApiError(500, 'Error al desvincular links de registro')
+    }
+
     const { error: deleteError } = await supabase
       .from('users')
       .delete()
-      .eq('id', id)
+      .eq('id', userId)
 
     if (deleteError) {
-      logApiError('/api/admin/users/[id]', deleteError, { userId: id })
-      return NextResponse.json(
-        { success: false, error: 'Error al eliminar usuario' },
-        { status: 500 }
-      )
+      logApiError('/api/admin/users/[id]', deleteError, { userId })
+      throw new ApiError(500, 'Error al eliminar usuario')
     }
 
     return NextResponse.json({
       success: true,
       message: 'Usuario eliminado exitosamente',
     })
-
   } catch (error) {
-    return handleApiError('/api/admin/users/[id]', error)
+    logApiError('/api/admin/users/[id]', error, { operation: 'DELETE' })
+    const res = handleApiError('/api/admin/users/[id]', error)
+    if (
+      process.env.NODE_ENV === 'development' &&
+      error instanceof Error &&
+      res.status === 500
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Error interno del servidor',
+          debug: error.message,
+          name: error.name,
+        },
+        { status: 500 }
+      )
+    }
+    return res
   }
 }

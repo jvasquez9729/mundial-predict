@@ -3,20 +3,79 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { getSession } from '@/lib/auth/session'
 import { handleApiError } from '@/lib/utils/api-error'
 import { logApiError } from '@/lib/utils/logger'
+import { validatePagination } from '@/lib/utils/pagination'
+
+const CACHE_TTL_MS = 45_000
+
+type LeaderboardEntry = { user_id: string; [k: string]: unknown }
+const leaderboardCache = new Map<string, { data: { leaderboard: LeaderboardEntry[]; totalParticipants: number; prizePool: unknown }; expires: number }>()
+
+function getLeaderboardCached() {
+  const ent = leaderboardCache.get('leaderboard')
+  if (!ent || Date.now() >= ent.expires) return null
+  return ent.data
+}
+function setLeaderboardCached(data: { leaderboard: LeaderboardEntry[]; totalParticipants: number; prizePool: unknown }) {
+  leaderboardCache.set('leaderboard', { data, expires: Date.now() + CACHE_TTL_MS })
+}
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
     const { searchParams } = new URL(request.url)
-    const limit = parseInt(searchParams.get('limit') || '50')
-    const offset = parseInt(searchParams.get('offset') || '0')
+    
+    // Validar parámetros de paginación
+    let limit: number
+    let offset: number
+    try {
+      const pagination = validatePagination(
+        searchParams.get('limit'),
+        searchParams.get('offset')
+      )
+      limit = pagination.limit
+      offset = pagination.offset
+    } catch (error) {
+      return NextResponse.json(
+        { success: false, error: error instanceof Error ? error.message : 'Parámetros de paginación inválidos' },
+        { status: 400 }
+      )
+    }
+
+    const cached = getLeaderboardCached()
+    if (cached) {
+      const leaderboard = cached.leaderboard
+      const paginatedLeaderboard = leaderboard.slice(offset, offset + limit)
+      const leaderboardWithPositions = paginatedLeaderboard.map((entry, index) => ({
+        ...entry,
+        posicion: offset + index + 1,
+      }))
+      let userPosition: number | null = null
+      let userData: unknown = null
+      if (session) {
+        const userIndex = leaderboard.findIndex((e) => e.user_id === session.userId)
+        if (userIndex >= 0) {
+          userPosition = userIndex + 1
+          userData = leaderboardWithPositions.find((e) => e.user_id === session.userId)
+            ?? { ...leaderboard[userIndex], posicion: userPosition }
+        }
+      }
+      return NextResponse.json({
+        success: true,
+        leaderboard: leaderboardWithPositions,
+        mi_posicion: userPosition ?? 0,
+        mi_datos: userData,
+        total_participantes: cached.totalParticipants,
+        pozo: cached.prizePool ?? { pozo_total: 0, premio_primero: 0, premio_exactos: 0, premio_grupos: 0 },
+        pagination: { offset, limit, has_more: leaderboard.length > offset + limit },
+      })
+    }
 
     const supabase = createServiceClient()
 
-    // Intentar usar la vista de leaderboard primero
+    const leaderboardCols = 'user_id, nombre_completo, puntos_totales, marcadores_exactos, predicciones_correctas, total_predicciones'
     let { data: leaderboard, error: leaderboardError } = await supabase
       .from('leaderboard')
-      .select('*')
+      .select(leaderboardCols)
       .order('puntos_totales', { ascending: false })
 
     // Si hay error con la vista, calcular el leaderboard manualmente
@@ -28,20 +87,17 @@ export async function GET(request: NextRequest) {
       })
       
       // Calcular leaderboard desde la tabla de users y predictions
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('id, nombre_completo')
-        .eq('es_admin', false)
+      const [usersRes, predictionsRes] = await Promise.all([
+        supabase.from('users').select('id, nombre_completo').eq('es_admin', false),
+        supabase.from('predictions').select('user_id, puntos_obtenidos, es_exacto'),
+      ])
+      const { data: users, error: usersError } = usersRes
+      const { data: predictions, error: predictionsError } = predictionsRes
 
       if (usersError) {
         logApiError('/api/leaderboard', usersError)
         throw new Error('Error al obtener usuarios')
       }
-
-      // Obtener todas las predicciones
-      const { data: predictions, error: predictionsError } = await supabase
-        .from('predictions')
-        .select('user_id, puntos_obtenidos, es_exacto')
 
       if (predictionsError) {
         logApiError('/api/leaderboard', predictionsError)
@@ -144,24 +200,23 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Obtener total de participantes
-    const { count: totalParticipants } = await supabase
+    const usersCountPromise = supabase
       .from('users')
-      .select('*', { count: 'exact', head: true })
+      .select('id', { count: 'exact', head: true })
       .eq('es_admin', false)
+    const prizePoolPromise = supabase
+      .from('prize_pool')
+      .select('pozo_total, premio_primero, premio_exactos, premio_grupos')
+      .maybeSingle()
 
-    // Obtener pozo de premios (opcional, puede no existir)
-    let prizePool = null
-    try {
-      const { data } = await supabase
-        .from('prize_pool')
-        .select('*')
-        .single()
-      prizePool = data
-    } catch {
-      // Ignorar error si la tabla no existe
-      prizePool = null
-    }
+    const [usersCountRes, prizePoolRes] = await Promise.all([
+      usersCountPromise,
+      prizePoolPromise,
+    ])
+    const totalParticipants = usersCountRes.count ?? 0
+    const prizePool = prizePoolRes.data ?? null
+
+    setLeaderboardCached({ leaderboard: leaderboard ?? [], totalParticipants, prizePool })
 
     return NextResponse.json({
       success: true,

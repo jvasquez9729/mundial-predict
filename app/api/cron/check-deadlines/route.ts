@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { handleApiError } from '@/lib/utils/api-error'
 
 export async function GET(request: NextRequest) {
   try {
@@ -114,10 +115,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Check deadlines error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error al verificar deadlines' },
-      { status: 500 }
-    )
+    return handleApiError('/api/cron/check-deadlines', error)
   }
 }

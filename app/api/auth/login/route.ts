@@ -3,9 +3,12 @@ import { createServiceClient } from '@/lib/supabase/server'
 import { verifyPassword } from '@/lib/auth/password'
 import { loginSchema } from '@/lib/auth/validation'
 import { createSession } from '@/lib/auth/session'
-import { setCsrfCookie } from '@/lib/auth/csrf'
+import { setCsrfCookie, CSRF_COOKIE } from '@/lib/auth/csrf'
 import { handleApiError } from '@/lib/utils/api-error'
 import { rateLimitAuth } from '@/lib/utils/rate-limit'
+
+const SESSION_COOKIE = 'mp_session'
+const SESSION_MAX_AGE = 60 * 60 * 24 * 7 // 7 días
 
 // Tipo explícito para el usuario en login
 type UserForLogin = {
@@ -25,7 +28,7 @@ export async function POST(request: NextRequest) {
     const ip = request.headers.get('x-forwarded-for') || 
                request.headers.get('x-real-ip') || 
                'unknown'
-    const rateLimitResult = rateLimitAuth(ip)
+    const rateLimitResult = await rateLimitAuth(ip)
     
     if (!rateLimitResult.allowed) {
       return NextResponse.json(
@@ -96,15 +99,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Crear sesión y token CSRF
-    await createSession({
+    // Crear sesión y token CSRF (obtener valores)
+    const token = await createSession({
       userId: typedUser.id,
       email: typedUser.email,
       esAdmin: typedUser.es_admin,
     })
-    await setCsrfCookie()
+    const csrfToken = await setCsrfCookie()
 
-    return NextResponse.json({
+    // Respuesta JSON explícita; setear cookies sobre ella para garantizar que se envíen
+    const secure = process.env.VERCEL === '1'
+    const res = NextResponse.json({
       success: true,
       user: {
         id: typedUser.id,
@@ -113,6 +118,23 @@ export async function POST(request: NextRequest) {
         es_admin: typedUser.es_admin,
       },
     })
+
+    res.cookies.set(SESSION_COOKIE, token, {
+      httpOnly: true,
+      secure,
+      sameSite: 'lax',
+      maxAge: SESSION_MAX_AGE,
+      path: '/',
+    })
+    res.cookies.set(CSRF_COOKIE, csrfToken, {
+      httpOnly: false,
+      secure,
+      sameSite: secure ? 'strict' : 'lax',
+      maxAge: SESSION_MAX_AGE,
+      path: '/',
+    })
+
+    return res
 
   } catch (error) {
     return handleApiError('/api/auth/login', error)

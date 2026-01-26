@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/server'
+import { handleApiError } from '@/lib/utils/api-error'
 
 /**
  * Cron job diario que ejecuta todas las tareas de mantenimiento
@@ -96,14 +97,6 @@ export async function GET(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('Daily cron error:', error)
-    return NextResponse.json(
-      { 
-        success: false, 
-        error: 'Error al ejecutar cron job diario',
-        details: error instanceof Error ? error.message : 'Error desconocido'
-      },
-      { status: 500 }
-    )
+    return handleApiError('/api/cron/daily', error)
   }
 }

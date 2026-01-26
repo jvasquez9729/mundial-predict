@@ -35,8 +35,73 @@ interface RateLimitResult {
   retryAfter: number // Segundos hasta poder reintentar
 }
 
-// --- Store en memoria ---
+// --- Interfaz para almacenamiento de rate limit ---
 
+interface RateLimitStorage {
+  get(key: string): Promise<RateLimitEntry | null>
+  set(key: string, value: RateLimitEntry, ttl?: number): Promise<void>
+  delete(key: string): Promise<void>
+  clear(): Promise<void>
+}
+
+// --- Store en memoria (implementación por defecto) ---
+
+class MemoryRateLimitStorage implements RateLimitStorage {
+  private store = new Map<string, RateLimitEntry>()
+
+  async get(key: string): Promise<RateLimitEntry | null> {
+    return this.store.get(key) || null
+  }
+
+  async set(key: string, value: RateLimitEntry): Promise<void> {
+    this.store.set(key, value)
+  }
+
+  async delete(key: string): Promise<void> {
+    this.store.delete(key)
+  }
+
+  async clear(): Promise<void> {
+    this.store.clear()
+  }
+}
+
+// Instancia del store (puede ser memoria o distribuido)
+let storage: RateLimitStorage = new MemoryRateLimitStorage()
+
+// Función para inicializar almacenamiento distribuido (se llamará cuando esté disponible)
+export async function initializeDistributedStorage(): Promise<void> {
+  const { rateLimitStorageConfig, isDistributedStorageAvailable } = await import('@/lib/config/rate-limit')
+  
+  if (!isDistributedStorageAvailable()) {
+    // Usar memoria si no hay almacenamiento distribuido configurado
+    return
+  }
+
+  const storageType = rateLimitStorageConfig.type
+
+  if (storageType === 'vercel-kv') {
+    try {
+      // webpackIgnore: no resolver en build si @vercel/kv no está instalado
+      const { kv } = await import(/* webpackIgnore: true */ '@vercel/kv')
+      // Implementación de Vercel KV (se puede agregar cuando se instale)
+      // storage = new VercelKVRateLimitStorage(kv)
+      logger.info('Vercel KV storage preparado para rate limiting')
+    } catch (error) {
+      logger.warn('Vercel KV no disponible, usando memoria', { error })
+    }
+  } else if (storageType === 'upstash') {
+    try {
+      // webpackIgnore: no resolver en build si @upstash/redis no está instalado
+      await import(/* webpackIgnore: true */ '@upstash/redis')
+      logger.info('Upstash storage preparado para rate limiting')
+    } catch (error) {
+      logger.warn('Upstash no disponible, usando memoria', { error })
+    }
+  }
+}
+
+// Store en memoria (mantener para compatibilidad)
 const store = new Map<string, RateLimitEntry>()
 
 // Limpieza automática del store cada hora
@@ -72,16 +137,17 @@ function cleanupExpiredEntries() {
  * @param config - Configuración de rate limit
  * @returns Resultado del rate limit
  */
-export function rateLimit(
+export async function rateLimit(
   identifier: string,
   config: RateLimitConfig
-): RateLimitResult {
+): Promise<RateLimitResult> {
   ensureCleanup()
 
   const now = Date.now()
   const key = `${rateLimitStorageConfig.keyPrefix}${config.name}:${identifier}`
 
-  // Obtener o crear entrada
+  // Por ahora, usar almacenamiento en memoria (compatible con async)
+  // En el futuro, se puede cambiar a storage.get() cuando esté configurado
   let entry = store.get(key)
 
   if (!entry) {
@@ -101,6 +167,11 @@ export function rateLimit(
   // Agregar request actual
   entry.requests.push(now)
   entry.count = entry.requests.length
+  store.set(key, entry)
+  
+  // Si hay almacenamiento distribuido disponible, también guardar ahí
+  // (esto se puede habilitar cuando se configure)
+  // await storage.set(key, entry)
 
   // Calcular resultados
   const allowed = entry.count <= config.maxRequests
@@ -133,10 +204,10 @@ export function rateLimit(
 /**
  * Rate limiting usando un perfil predefinido
  */
-export function rateLimitWithProfile(
+export async function rateLimitWithProfile(
   identifier: string,
   profile: RateLimitProfile
-): RateLimitResult {
+): Promise<RateLimitResult> {
   const config = rateLimitProfiles[profile]
   return rateLimit(identifier, config)
 }
@@ -144,10 +215,10 @@ export function rateLimitWithProfile(
 /**
  * Rate limiting por IP
  */
-export function rateLimitByIP(
+export async function rateLimitByIP(
   ip: string | null,
   profile: RateLimitProfile = 'standard'
-): RateLimitResult {
+): Promise<RateLimitResult> {
   const identifier = ip || 'unknown'
   return rateLimitWithProfile(identifier, profile)
 }
@@ -156,7 +227,7 @@ export function rateLimitByIP(
  * Rate limiting para autenticación (login/registro)
  * Usa el perfil 'auth' por defecto
  */
-export function rateLimitAuth(ip: string | null): RateLimitResult {
+export async function rateLimitAuth(ip: string | null): Promise<RateLimitResult> {
   return rateLimitByIP(ip, 'auth')
 }
 
@@ -164,28 +235,28 @@ export function rateLimitAuth(ip: string | null): RateLimitResult {
  * Rate limiting para registro de usuarios
  * Más estricto que autenticación
  */
-export function rateLimitRegister(ip: string | null): RateLimitResult {
+export async function rateLimitRegister(ip: string | null): Promise<RateLimitResult> {
   return rateLimitByIP(ip, 'register')
 }
 
 /**
  * Rate limiting para operaciones sensibles
  */
-export function rateLimitSensitive(ip: string | null): RateLimitResult {
+export async function rateLimitSensitive(ip: string | null): Promise<RateLimitResult> {
   return rateLimitByIP(ip, 'sensitive')
 }
 
 /**
  * Rate limiting para endpoints de solo lectura
  */
-export function rateLimitReadonly(ip: string | null): RateLimitResult {
+export async function rateLimitReadonly(ip: string | null): Promise<RateLimitResult> {
   return rateLimitByIP(ip, 'readonly')
 }
 
 /**
  * Rate limiting para admin
  */
-export function rateLimitAdmin(ip: string | null): RateLimitResult {
+export async function rateLimitAdmin(ip: string | null): Promise<RateLimitResult> {
   return rateLimitByIP(ip, 'admin')
 }
 

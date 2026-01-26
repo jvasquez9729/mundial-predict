@@ -35,6 +35,7 @@ export default function LoginPage() {
           password,
           identifier_type: identifierType,
         }),
+        credentials: "include",
       });
 
       const data = await response.json();
@@ -45,13 +46,15 @@ export default function LoginPage() {
         return;
       }
 
-      // Redirigir según rol
+      // Breve pausa para que el navegador persista las cookies antes de navegar.
+      await new Promise((r) => setTimeout(r, 50));
+
+      // Redirigir según rol (sin refresh para evitar latencia extra)
       if (data.user.es_admin) {
         router.push("/admin");
       } else {
         router.push("/dashboard");
       }
-      router.refresh();
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
       setLoading(false);

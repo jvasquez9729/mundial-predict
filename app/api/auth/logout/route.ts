@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { deleteSession } from '@/lib/auth/session'
 import { deleteCsrfCookie } from '@/lib/auth/csrf'
+import { handleApiError } from '@/lib/utils/api-error'
 
 export async function POST() {
   try {
@@ -10,10 +11,6 @@ export async function POST() {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Logout error:', error)
-    return NextResponse.json(
-      { success: false, error: 'Error al cerrar sesión' },
-      { status: 500 }
-    )
+    return handleApiError('/api/auth/logout', error)
   }
 }

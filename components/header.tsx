@@ -51,7 +51,7 @@ export function Header() {
 
   async function loadNotifications() {
     try {
-      const res = await fetch('/api/notifications');
+      const res = await fetch('/api/notifications', { credentials: 'include' });
       const data = await res.json();
       if (data.success) {
         setNotifications(data.notifications || []);
@@ -63,11 +63,14 @@ export function Header() {
   }
 
   function handleLogout() {
-    fetch('/api/auth/logout', { method: 'POST', headers: getCsrfHeaders() })
-      .then(() => {
-        router.push('/');
-        router.refresh();
-      });
+    fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: getCsrfHeaders(),
+      credentials: 'include',
+    }).then(() => {
+      router.push('/');
+      router.refresh();
+    });
   }
 
   const navItems = [
@@ -176,7 +179,11 @@ export function Header() {
                           className="text-xs"
                           onClick={async () => {
                             // Marcar todas como leídas
-                            await fetch('/api/notifications', { method: 'PUT', headers: getCsrfHeaders() });
+                            await fetch('/api/notifications', {
+                              method: 'PUT',
+                              headers: getCsrfHeaders(),
+                              credentials: 'include',
+                            });
                             loadNotifications();
                           }}
                         >
@@ -198,7 +205,10 @@ export function Header() {
                             }`}
                             onClick={async () => {
                               if (!notif.leida) {
-                                await fetch(`/api/notifications?id=${notif.id}`, { method: 'PUT' });
+                                await fetch(`/api/notifications?id=${notif.id}`, {
+                                  method: 'PUT',
+                                  credentials: 'include',
+                                });
                                 loadNotifications();
                               }
                             }}

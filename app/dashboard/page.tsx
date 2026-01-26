@@ -145,7 +145,11 @@ export default function DashboardPage() {
               size="sm" 
               className="transition-colors"
               onClick={async () => {
-                await fetch('/api/auth/logout', { method: 'POST', headers: getCsrfHeaders() });
+                await fetch('/api/auth/logout', {
+                  method: 'POST',
+                  headers: getCsrfHeaders(),
+                  credentials: 'include',
+                });
                 window.location.href = '/';
               }}
             >

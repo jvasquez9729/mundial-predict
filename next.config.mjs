@@ -1,5 +1,11 @@
+import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
 /** @type {import('next').Config} */
 const nextConfig = {
+  outputFileTracingRoot: path.join(__dirname),
   images: {
     unoptimized: true,
   },
@@ -38,15 +44,17 @@ const nextConfig = {
       },
     ]
 
-    // Headers de seguridad HTTPS solo en producción
-    if (isProduction) {
+    // HSTS + CSP estricta solo en Vercel. En local (npm run start) no hay SSL;
+    // HSTS rompe http://localhost.
+    const isVercel = process.env.VERCEL === '1'
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || ''
+    const isLocalApp = /localhost|127\.0\.0\.1/.test(appUrl)
+    if (isProduction && isVercel && !isLocalApp) {
       securityHeaders.push(
-        // Forzar HTTPS con HSTS (HTTP Strict Transport Security)
         {
           key: 'Strict-Transport-Security',
           value: 'max-age=31536000; includeSubDomains; preload',
         },
-        // Content Security Policy mejorada
         {
           key: 'Content-Security-Policy',
           value: [
@@ -61,7 +69,6 @@ const nextConfig = {
             "base-uri 'self'",
             "form-action 'self'",
             "frame-ancestors 'none'",
-            "upgrade-insecure-requests",
           ].join('; '),
         }
       )

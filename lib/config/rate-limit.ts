@@ -101,7 +101,7 @@ export function getRateLimitConfig(profile: RateLimitProfile): RateLimitConfig {
 }
 
 /**
- * Configuración para almacenamiento distribuido (futuro)
+ * Configuración para almacenamiento distribuido
  *
  * Para habilitar almacenamiento distribuido:
  * 1. Instalar dependencias:
@@ -116,9 +116,11 @@ export function getRateLimitConfig(profile: RateLimitProfile): RateLimitConfig {
  *
  * 3. Cambiar STORAGE_TYPE a 'vercel-kv' o 'upstash'
  */
+export type RateLimitStorageType = 'memory' | 'vercel-kv' | 'upstash'
+
 export const rateLimitStorageConfig = {
   /** Tipo de almacenamiento: 'memory' | 'vercel-kv' | 'upstash' */
-  type: 'memory' as const,
+  type: (process.env.RATE_LIMIT_STORAGE_TYPE || 'memory') as RateLimitStorageType,
 
   /** Prefijo para claves en almacenamiento distribuido */
   keyPrefix: 'ratelimit:',
@@ -126,3 +128,24 @@ export const rateLimitStorageConfig = {
   /** Habilitar logging de rate limits */
   enableLogging: process.env.NODE_ENV === 'development',
 } as const
+
+/**
+ * Verificar si el almacenamiento distribuido está disponible
+ */
+export function isDistributedStorageAvailable(): boolean {
+  const storageType = rateLimitStorageConfig.type
+  
+  if (storageType === 'memory') {
+    return false
+  }
+  
+  if (storageType === 'vercel-kv') {
+    return !!(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+  }
+  
+  if (storageType === 'upstash') {
+    return !!(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN)
+  }
+  
+  return false
+}

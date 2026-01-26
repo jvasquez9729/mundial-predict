@@ -92,6 +92,7 @@ async function apiFetch<T = unknown>(
       ...restOptions,
       headers,
       body: body ? JSON.stringify(body) : undefined,
+      credentials: 'include',
     })
 
     // Intentar parsear JSON
