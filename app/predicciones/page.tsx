@@ -24,7 +24,7 @@ export default async function PrediccionesPage() {
     redirect("/login");
   }
 
-  // Fetch upcoming matches (estado proximo; esquema real: equipo_local, equipo_visitante, fecha_hora, fase, estadio)
+  // Fetch upcoming matches - usar !inner para relaciones many-to-one
   const { data: matches } = await supabase
     .from("matches")
     .select(`
@@ -34,8 +34,8 @@ export default async function PrediccionesPage() {
       estadio,
       estado,
       predicciones_cerradas,
-      equipo_local:equipo_local_id(id, nombre, codigo, bandera_url),
-      equipo_visitante:equipo_visitante_id(id, nombre, codigo, bandera_url)
+      equipo_local:teams!equipo_local_id(id, nombre, codigo, bandera_url),
+      equipo_visitante:teams!equipo_visitante_id(id, nombre, codigo, bandera_url)
     `)
     .gte("fecha_hora", new Date().toISOString())
     .eq("estado", "proximo")
@@ -54,18 +54,11 @@ export default async function PrediccionesPage() {
     es_admin: userProfile.es_admin,
   };
 
-  // Normalizar: Supabase a veces devuelve equipo_local/equipo_visitante como array
-  const normalizedMatches = (matches || []).map((m) => ({
-    ...m,
-    equipo_local: Array.isArray(m.equipo_local) ? m.equipo_local[0] : m.equipo_local,
-    equipo_visitante: Array.isArray(m.equipo_visitante) ? m.equipo_visitante[0] : m.equipo_visitante,
-  }));
-
   return (
     <PredictionsPanel 
       user={user} 
       profile={userProfile} 
-      matches={normalizedMatches} 
+      matches={matches || []} 
       existingPredictions={predictions || []}
     />
   );
