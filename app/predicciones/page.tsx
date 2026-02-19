@@ -54,11 +54,18 @@ export default async function PrediccionesPage() {
     es_admin: userProfile.es_admin,
   };
 
+  // Normalizar relaciones de Supabase: arrays de un solo elemento → objeto
+  const normalizedMatches = (matches || []).map((m) => ({
+    ...m,
+    equipo_local: Array.isArray(m.equipo_local) ? m.equipo_local[0] : m.equipo_local,
+    equipo_visitante: Array.isArray(m.equipo_visitante) ? m.equipo_visitante[0] : m.equipo_visitante,
+  }));
+
   return (
-    <PredictionsPanel 
-      user={user} 
-      profile={userProfile} 
-      matches={matches || []} 
+    <PredictionsPanel
+      user={user}
+      profile={userProfile}
+      matches={normalizedMatches}
       existingPredictions={predictions || []}
     />
   );
