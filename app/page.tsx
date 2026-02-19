@@ -8,11 +8,8 @@ import { Leaderboard } from "@/components/leaderboard";
 import { PredictionForm } from "@/components/prediction-form";
 import { LiveResults } from "@/components/live-results";
 import { MatchHighlights } from "@/components/match-highlights";
-import { CommunityBanner } from "@/components/community-banner";
 import { MotivationWidget } from "@/components/motivation-widget";
 import { PrizesRules } from "@/components/prizes-rules";
-import { GlobalParticipation } from "@/components/global-participation";
-import { ParticipantsAvatars } from "@/components/participants-avatars";
 import { BlurFade } from "@/components/ui/blur-fade";
 import Link from "next/link";
 import { useTranslation } from "@/hooks/use-translation";
@@ -35,45 +32,30 @@ export default function HomePage() {
           </section>
         </BlurFade>
 
-        {/* Global Participation & Participants Grid */}
-        <div className="mb-8 grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2">
-            <GlobalParticipation />
-          </div>
-          <div>
-            <ParticipantsAvatars />
-          </div>
-        </div>
-
-        {/* Featured Players & Teams */}
-        <BlurFade delay={0.2} direction="up">
-          <FeaturedPlayers />
-        </BlurFade>
-
-        {/* Main Content Grid */}
+        {/* Main Content Grid - Clasificación, Predicciones, Resultados */}
         <div className="mb-8 grid gap-6 lg:grid-cols-3">
           {/* Left Column - Leaderboard + Motivation */}
-          <section 
+          <section
             id="clasificacion"
-            className="lg:col-span-2 space-y-6" 
+            className="lg:col-span-2 space-y-6"
             aria-label="Tabla de clasificacion"
           >
-            <BlurFade delay={0.3} direction="right">
+            <BlurFade delay={0.2} direction="right">
               <Leaderboard />
             </BlurFade>
-            <BlurFade delay={0.4} direction="right">
+            <BlurFade delay={0.3} direction="right">
               <MotivationWidget />
             </BlurFade>
           </section>
 
           {/* Right Column - Predictions & Results */}
           <aside className="space-y-6">
-            <BlurFade delay={0.3} direction="left">
+            <BlurFade delay={0.2} direction="left">
               <section aria-label="Formulario de predicciones">
                 <PredictionForm />
               </section>
             </BlurFade>
-            <BlurFade delay={0.4} direction="left">
+            <BlurFade delay={0.3} direction="left">
               <section aria-label="Resultados en vivo">
                 <LiveResults />
               </section>
@@ -82,10 +64,15 @@ export default function HomePage() {
         </div>
 
         {/* Prizes and Rules Section */}
-        <BlurFade delay={0.5} direction="up">
+        <BlurFade delay={0.4} direction="up">
           <section className="mb-8" aria-label="Premios y reglas">
             <PrizesRules />
           </section>
+        </BlurFade>
+
+        {/* Featured Players & Teams (Favoritos de la comunidad) */}
+        <BlurFade delay={0.5} direction="up">
+          <FeaturedPlayers />
         </BlurFade>
 
         {/* Match Highlights Gallery */}
@@ -93,13 +80,8 @@ export default function HomePage() {
           <MatchHighlights />
         </BlurFade>
 
-        {/* Community Banner */}
-        <BlurFade delay={0.7} direction="up">
-          <CommunityBanner />
-        </BlurFade>
-
         {/* Footer */}
-        <BlurFade delay={0.8} direction="up">
+        <BlurFade delay={0.7} direction="up">
           <footer className="mt-12 border-t border-border pt-8 pb-8">
             <div className="flex flex-col gap-6">
               {/* Links de navegación */}

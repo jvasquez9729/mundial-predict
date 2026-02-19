@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Trophy, Flame, Target, Star, Zap } from "lucide-react";
+import { Trophy, Flame, Target, Star } from "lucide-react";
 
 const quotes = [
   {
@@ -28,15 +28,8 @@ const quotes = [
   {
     text: "Sueña en grande y atrévete a fallar",
     author: "Norman Vaughan",
-    icon: Zap,
+    icon: Star,
   },
-];
-
-const dailyTips = [
-  "Predice los partidos de hoy antes de las 12:00 para puntos extra",
-  "Los resultados exactos otorgan el doble de puntos",
-  "Mantén una racha de 5 aciertos para desbloquear bonus",
-  "Comparte tus predicciones y gana puntos de comunidad",
 ];
 
 export function MotivationWidget() {
@@ -57,8 +50,6 @@ export function MotivationWidget() {
 
   const quote = quotes[currentQuote];
   const Icon = quote.icon;
-  const tip = dailyTips[Math.floor(Date.now() / 86400000) % dailyTips.length];
-
   return (
     <div className="space-y-4">
       {/* Quote Card */}
@@ -98,19 +89,6 @@ export function MotivationWidget() {
               />
             ))}
           </div>
-        </CardContent>
-      </Card>
-
-      {/* Daily Tip */}
-      <Card className="bg-accent/10 border-accent/30">
-        <CardContent className="p-4">
-          <div className="flex items-center gap-2 mb-2">
-            <Zap className="w-4 h-4 text-accent" />
-            <span className="text-xs font-semibold text-accent uppercase tracking-wide">
-              Tip del día
-            </span>
-          </div>
-          <p className="text-sm text-foreground/80">{tip}</p>
         </CardContent>
       </Card>
 
